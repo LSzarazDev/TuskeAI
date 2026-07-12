@@ -86,7 +86,7 @@ struct ContentView: View {
         )
     ]
 
-    private let ollamaURL = URL(string: "http://192.168.1.128:11434/api/generate")!
+    private let ollamaURL = URL(string: "http://100.105.25.106:11434/api/generate")!
     private let modelName = "csajos:latest"
 
     var body: some View {
