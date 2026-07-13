@@ -37,9 +37,12 @@ TuskeAI is built with craftsmanship, curiosity, and respect for its community.
 
 Licensed under the Apache License 2.0.
 
+
 ## Author
 
-**Lóránt Száraz**
+Lóránt Száraz
+
+Founder of TuskeAI
 
 GitHub:
-https://github.com/LSzarazDev/TuskeAI
+https://github.com/LSzarazDev
