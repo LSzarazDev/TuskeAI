@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		957E2C4F30056708009CC223 /* Untitled.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957E2C4E30056707009CC223 /* Untitled.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		95199BD82FEB181D00C26BEB /* TuskeAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TuskeAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		957E2C4E30056707009CC223 /* Untitled.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Untitled.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -45,6 +50,7 @@
 		95199BCF2FEB181D00C26BEB = {
 			isa = PBXGroup;
 			children = (
+				957E2C4E30056707009CC223 /* Untitled.swift */,
 				95199BDA2FEB181D00C26BEB /* TuskeAI */,
 				95199BD92FEB181D00C26BEB /* Products */,
 			);
@@ -132,6 +138,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				957E2C4F30056708009CC223 /* Untitled.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
