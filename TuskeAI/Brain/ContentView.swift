@@ -64,7 +64,7 @@ struct ChatMessage: Identifiable {
 }
 
 struct ContentView: View {
-    private let voice = VoiceManager()
+    private  let voice = VoiceManager()
 
     @State private var input: String = ""
     @State private var selectedAgent: Agent = .csajos
@@ -86,7 +86,7 @@ struct ContentView: View {
         )
     ]
 
-    private let ollamaURL = URL(string: "http://100.105.25.106:11434/api/generate")!
+    private let ollamaURL = URL(string: "http://192.168.31.126:11434/api/generate")!
     private let modelName = "csajos:latest"
 
     var body: some View {
@@ -277,7 +277,21 @@ struct ContentView: View {
         let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInput.isEmpty else { return }
 
-        let agent = selectedAgent
+        var agent = selectedAgent
+
+        let lower = trimmedInput.lowercased()
+
+        if lower.hasPrefix("csajos") {
+            agent = .csajos
+        } else if lower.hasPrefix("oli") {
+            agent = .oli
+        } else if lower.hasPrefix("töki") || lower.hasPrefix("toki") {
+            agent = .toki
+        } else if lower.hasPrefix("tüske") || lower.hasPrefix("tuske") {
+            agent = .tuske
+        } else if lower.hasPrefix("tesó") || lower.hasPrefix("teso") {
+            agent = .teso
+        }
 
         messages.append(ChatMessage(agent: nil, text: trimmedInput, isUser: true))
         input = ""
@@ -291,7 +305,7 @@ struct ContentView: View {
         - Ha valamiben nem vagy biztos, mondd meg.
         - Tüske haverjaként válaszolj.
 
-        Tüske üzenete:
+        Felhasználó üzenete:
         \(trimmedInput)
         """
 
@@ -301,8 +315,27 @@ struct ContentView: View {
     private func sendToOllama(prompt: String, agent: Agent) {
         isLoading = true
 
+        let selectedModel: String
+
+        switch agent {
+        case .csajos:
+            selectedModel = "csajos:latest"
+
+        case .oli:
+            selectedModel = "dagi:latest"
+
+        case .toki:
+            selectedModel = "llama3.2:latest"
+
+        case .tuske:
+            selectedModel = "llama3.2:latest"
+
+        case .teso:
+            selectedModel = "llama3.2:latest"
+        }
+
         let body: [String: Any] = [
-            "model": modelName,
+            "model": selectedModel,
             "prompt": prompt,
             "stream": false,
             "keep_alive": "30m",

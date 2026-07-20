@@ -6,22 +6,27 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		957E2C4F30056708009CC223 /* Untitled.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957E2C4E30056707009CC223 /* Untitled.swift */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		95199BD82FEB181D00C26BEB /* TuskeAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TuskeAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		957E2C4E30056707009CC223 /* Untitled.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Untitled.swift; sourceTree = "<group>"; };
+		957EBD97300D6CC500FF9678 /* TuskeAI Mac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TuskeAI Mac.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		953871CF2FF1DD1700CE5F87 /* Exceptions for "TuskeAI" folder in "TuskeAI" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Characters/csajos.Modelfile,
 				Info.plist,
 			);
 			target = 95199BD72FEB181D00C26BEB /* TuskeAI */;
+		};
+		9591B3CC300D76B4005BFE75 /* Exceptions for "TuskeAI" folder in "TuskeAI Mac" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Brain/AppLauncher.swift,
+			);
+			target = 957EBD96300D6CC500FF9678 /* TuskeAI Mac */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -30,14 +35,27 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				953871CF2FF1DD1700CE5F87 /* Exceptions for "TuskeAI" folder in "TuskeAI" target */,
+				9591B3CC300D76B4005BFE75 /* Exceptions for "TuskeAI" folder in "TuskeAI Mac" target */,
 			);
 			path = TuskeAI;
+			sourceTree = "<group>";
+		};
+		957EBD98300D6CC500FF9678 /* TuskeAI Mac */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "TuskeAI Mac";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		95199BD52FEB181D00C26BEB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		957EBD94300D6CC500FF9678 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -52,6 +70,7 @@
 			children = (
 				957E2C4E30056707009CC223 /* Untitled.swift */,
 				95199BDA2FEB181D00C26BEB /* TuskeAI */,
+				957EBD98300D6CC500FF9678 /* TuskeAI Mac */,
 				95199BD92FEB181D00C26BEB /* Products */,
 			);
 			sourceTree = "<group>";
@@ -60,6 +79,7 @@
 			isa = PBXGroup;
 			children = (
 				95199BD82FEB181D00C26BEB /* TuskeAI.app */,
+				957EBD97300D6CC500FF9678 /* TuskeAI Mac.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -89,6 +109,28 @@
 			productReference = 95199BD82FEB181D00C26BEB /* TuskeAI.app */;
 			productType = "com.apple.product-type.application";
 		};
+		957EBD96300D6CC500FF9678 /* TuskeAI Mac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 957EBDA1300D6CC600FF9678 /* Build configuration list for PBXNativeTarget "TuskeAI Mac" */;
+			buildPhases = (
+				957EBD93300D6CC500FF9678 /* Sources */,
+				957EBD94300D6CC500FF9678 /* Frameworks */,
+				957EBD95300D6CC500FF9678 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				957EBD98300D6CC500FF9678 /* TuskeAI Mac */,
+			);
+			name = "TuskeAI Mac";
+			packageProductDependencies = (
+			);
+			productName = "TuskeAI Mac";
+			productReference = 957EBD97300D6CC500FF9678 /* TuskeAI Mac.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -96,11 +138,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2650;
+				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					95199BD72FEB181D00C26BEB = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					957EBD96300D6CC500FF9678 = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -119,12 +164,20 @@
 			projectRoot = "";
 			targets = (
 				95199BD72FEB181D00C26BEB /* TuskeAI */,
+				957EBD96300D6CC500FF9678 /* TuskeAI Mac */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		95199BD62FEB181D00C26BEB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		957EBD95300D6CC500FF9678 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -138,7 +191,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				957E2C4F30056708009CC223 /* Untitled.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		957EBD93300D6CC500FF9678 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -278,7 +337,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TuskeAI/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "";
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -313,7 +371,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TuskeAI/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "";
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -336,6 +393,74 @@
 			};
 			name = Release;
 		};
+		957EBD9F300D6CC600FF9678 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Q536557K27;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.tuskeai.TuskeAI-Mac";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		957EBDA0300D6CC600FF9678 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Q536557K27;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.tuskeai.TuskeAI-Mac";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -353,6 +478,15 @@
 			buildConfigurations = (
 				95199BE42FEB181F00C26BEB /* Debug */,
 				95199BE52FEB181F00C26BEB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		957EBDA1300D6CC600FF9678 /* Build configuration list for PBXNativeTarget "TuskeAI Mac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				957EBD9F300D6CC600FF9678 /* Debug */,
+				957EBDA0300D6CC600FF9678 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
