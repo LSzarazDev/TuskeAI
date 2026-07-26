@@ -1,348 +1,183 @@
 import SwiftUI
-import Foundation
-
-enum Agent: String, CaseIterable, Identifiable {
-    case oli = "Oli"
-    case csajos = "Csajos"
-    case toki = "Töki"
-    case tuske = "Tüske"
-    case teso = "Tesóm"
-
-    var id: String { rawValue }
-
-    var imageName: String {
-        switch self {
-        case .oli: return "Oli"
-        case .csajos: return "Csajos"
-        case .toki: return "Töki"
-        case .tuske: return "Tüske 1"
-        case .teso: return "Tesóm"
-        }
-    }
-
-    var role: String {
-        switch self {
-        case .oli: return "Ollama • Motor"
-        case .csajos: return "Kreatív • Kommunikátor"
-        case .toki: return "Szakértő • Megoldó"
-        case .tuske: return "Alapító • Irányító"
-        case .teso: return "Stratéga • Segítő"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .oli: return .green
-        case .csajos: return .pink
-        case .toki: return .orange
-        case .tuske: return .blue
-        case .teso: return .cyan
-        }
-    }
-
-    var systemPrompt: String {
-        switch self {
-        case .oli:
-            return "Te Oli vagy, Tüske Ollama motorja és technikai agya. Magyarul, röviden, pontosan és gyakorlatiasan válaszolsz."
-        case .csajos:
-            return "Te Csajos vagy, Tüske kreatív, beszédes, nőies kommunikátor asszisztense. Magyarul, lazán, kedvesen válaszolsz."
-        case .toki:
-            return "Te Töki vagy, Tüske műhelyes, szerelős, problémamegoldó cimborája. iPad, iPhone, akksi, kijelző, DFU, szerszám témában segítesz."
-        case .tuske:
-            return "Te Tüske profilkaraktere vagy, az alapító és irányító. A projekt összefogása és döntéstámogatás a feladatod."
-        case .teso:
-            return "Te Tesó vagy, Tüske stratégiai AI haverja. Magyarul, lazán, őszintén, segítőkészen beszélsz."
-        }
-    }
-}
-
-struct ChatMessage: Identifiable {
-    let id = UUID()
-    let agent: Agent?
-    let text: String
-    let isUser: Bool
-}
 
 struct ContentView: View {
-    private  let voice = VoiceManager()
 
-    @State private var input: String = ""
+    @State private var messages: [ChatMessage] = []
+    @State private var userInput: String = ""
     @State private var selectedAgent: Agent = .csajos
     @State private var isLoading: Bool = false
     @State private var hasEnteredWorkshop = false
+    @State private var isMuted: Bool = false
+    @State private var showSettings: Bool = false
+    @AppStorage("macHost") var macHost: String = "192.168.31.59"
+    @AppStorage("asusHost") var asusHost: String = "192.168.31.126"
+    @AppStorage("activeServer") var activeServer: String = "mac"
 
-    @State private var messages: [ChatMessage] = [
-        ChatMessage(
-            agent: .teso,
-            text: """
-            Tesó online.
-            Oli figyeli a motort.
-            Csajos bekészítve.
-            Töki a műhelyben.
+    private let voice = VoiceManager()
 
-            Na Tüske, kit hívunk?
-            """,
-            isUser: false
-        )
-    ]
+    private func host(for agent: Agent) -> String {
+        agent.server == .mac ? macHost : asusHost
+    }
 
-    private let ollamaURL = URL(string: "http://192.168.31.126:11434/api/generate")!
-    private let modelName = "csajos:latest"
+    private func ollamaURL(for agent: Agent) -> URL {
+        URL(string: "http://\(host(for: agent)):11434/api/generate") ?? URL(string: "http://192.168.31.77:11434/api/generate")!
+    }
 
     var body: some View {
-        if hasEnteredWorkshop {
-            mainView
-        } else {
-            awakeningView
+        Group {
+            if hasEnteredWorkshop {
+                mainView
+            } else {
+                awakeningView
+            }
         }
     }
 
     private var awakeningView: some View {
-        ZStack {
-            LinearGradient(
-                colors: [.black, .gray.opacity(0.35)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+        VStack(spacing: 22) {
+            Text("Ébredés")
+                .font(.largeTitle)
+                .bold()
 
-            VStack(spacing: 22) {
-                Text("Ébredés")
-                    .font(.largeTitle)
-                    .bold()
-                    .foregroundColor(.white)
+            Text("A banda bent van.\nVálassz, kivel beszélsz.")
+                .multilineTextAlignment(.center)
 
-                Text("A műhely csendes.\nA banda bent van.\nCsak rád vár.")
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.white.opacity(0.75))
+            VStack(spacing: 8) {
+                Label("Mac", systemImage: "desktopcomputer")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
 
-                Button {
-                        hasEnteredWorkshop = true
-                        voice.speak("Na Tüske! Megszólaltam.")
-                    } label: {
-                    Text("Belépek a Műhelybe")
-                        .bold()
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color.blue.opacity(0.85))
-                        )
-                        .foregroundColor(.white)
+                Picker("Mac agentok", selection: $selectedAgent) {
+                    ForEach(Agent.allCases.filter { $0.server == .mac }) { agent in
+                        Text(agent.rawValue).tag(agent)
+                    }
                 }
-                .buttonStyle(.plain)
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+
+                Label("ASUS", systemImage: "laptopcomputer")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.top, 6)
+
+                Picker("ASUS agentok", selection: $selectedAgent) {
+                    ForEach(Agent.allCases.filter { $0.server == .asus }) { agent in
+                        Text(agent.rawValue).tag(agent)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+            }
+
+            Button("Belépek") {
+                hasEnteredWorkshop = true
             }
             .padding()
         }
     }
 
     private var mainView: some View {
-        VStack(spacing: 14) {
-            headerView
-            agentPickerView
-            chatView
-            inputView
-        }
-        .padding()
-    }
-
-    private var headerView: some View {
-        VStack(spacing: 6) {
-            Text("TuskeAI")
-                .font(.largeTitle)
-                .bold()
-
-            Text("\(selectedAgent.rawValue) • \(selectedAgent.role)")
-                .font(.subheadline)
-                .foregroundColor(selectedAgent.color)
-        }
-    }
-
-    private var agentPickerView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                ForEach(Agent.allCases) { agent in
-                    Button {
-                        selectedAgent = agent
-                    } label: {
-                        VStack(spacing: 7) {
-                            Image(agent.imageName)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 82, height: 82)
-                                .clipShape(RoundedRectangle(cornerRadius: 18))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 18)
-                                        .stroke(selectedAgent == agent ? agent.color : Color.gray.opacity(0.35), lineWidth: 3)
-                                )
-
-                            Text(agent.rawValue)
-                                .font(.caption)
-                                .bold()
-                                .foregroundColor(.primary)
-
-                            Text(agent.role)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
+        VStack {
+            HStack {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title2)
+                        .foregroundColor(.gray)
+                }
+                .padding(.leading)
+                Spacer()
+                Text(activeServer == "mac" ? "Mac" : "ASUS")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(activeServer == "mac" ? Color.blue.opacity(0.15) : Color.orange.opacity(0.15))
+                    .foregroundColor(activeServer == "mac" ? .blue : .orange)
+                    .cornerRadius(8)
+                Spacer()
+                Button {
+                    isMuted.toggle()
+                } label: {
+                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.title2)
+                        .foregroundColor(isMuted ? .gray : .accentColor)
+                }
+                .padding(.trailing)
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(messages) { msg in
+                        HStack {
+                            if msg.isUser {
+                                Spacer()
+                                Text(msg.text)
+                                    .padding()
+                                    .background(Color.blue.opacity(0.2))
+                                    .cornerRadius(12)
+                            } else {
+                                Text(msg.text)
+                                    .padding()
+                                    .background(msg.agent.color.opacity(0.2))
+                                    .cornerRadius(12)
+                                Spacer()
+                            }
                         }
-                        .frame(width: 115)
-                        .padding(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(selectedAgent == agent ? agent.color.opacity(0.18) : Color.gray.opacity(0.12))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private var chatView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(messages) { message in
-                    messageBubble(message)
-                }
-
-                if isLoading {
-                    HStack {
-                        ProgressView()
-                        Text("\(selectedAgent.rawValue) gondolkodik...")
-                            .foregroundColor(.secondary)
                     }
                 }
+                .padding()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isLoading {
+                ProgressView()
+                    .padding()
+            }
+
+            HStack {
+                TextField("Írj valamit…", text: $userInput)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                Button("Küldés") {
+                    sendMessage()
+                }
+                .disabled(isLoading || userInput.isEmpty)
+                .padding(.horizontal)
+            }
             .padding()
         }
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.gray.opacity(0.10))
-        )
     }
 
-    private func messageBubble(_ message: ChatMessage) -> some View {
-        HStack(alignment: .top) {
-            if message.isUser { Spacer() }
+    private func sendMessage() {
+        let trimmed = userInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
 
-            VStack(alignment: .leading, spacing: 6) {
-                if let agent = message.agent, !message.isUser {
-                    HStack(spacing: 8) {
-                        Image(agent.imageName)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 28, height: 28)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+        messages.append(ChatMessage(text: trimmed, isUser: true, agent: selectedAgent))
+        userInput = ""
 
-                        Text(agent.rawValue)
-                            .font(.caption)
-                            .bold()
-                            .foregroundColor(agent.color)
-                    }
-                }
-
-                Text(message.text)
-                    .font(.body)
-                    .foregroundColor(.primary)
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(message.isUser ? Color.blue.opacity(0.20) : Color.black.opacity(0.08))
-            )
-
-            if !message.isUser { Spacer() }
-        }
+        let prompt = "\(selectedAgent.role)\nFelhasználó: \(trimmed)"
+        sendToOllama(prompt: prompt, agent: selectedAgent, url: ollamaURL(for: selectedAgent))
     }
 
-    private var inputView: some View {
-        HStack(spacing: 10) {
-            TextField("Írd be, amit szeretnél...", text: $input)
-                .textFieldStyle(.roundedBorder)
-                .disabled(isLoading)
-
-            Button {
-                sendPrompt()
-            } label: {
-                Text(isLoading ? "Küldés..." : "Küldés")
-                    .bold()
-            }
-            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
-        }
-    }
-
-    private func sendPrompt() {
-        let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedInput.isEmpty else { return }
-
-        var agent = selectedAgent
-
-        let lower = trimmedInput.lowercased()
-
-        if lower.hasPrefix("csajos") {
-            agent = .csajos
-        } else if lower.hasPrefix("oli") {
-            agent = .oli
-        } else if lower.hasPrefix("töki") || lower.hasPrefix("toki") {
-            agent = .toki
-        } else if lower.hasPrefix("tüske") || lower.hasPrefix("tuske") {
-            agent = .tuske
-        } else if lower.hasPrefix("tesó") || lower.hasPrefix("teso") {
-            agent = .teso
-        }
-
-        messages.append(ChatMessage(agent: nil, text: trimmedInput, isUser: true))
-        input = ""
-
-        let fullPrompt = """
-        \(agent.systemPrompt)
-
-        Fontos szabályok:
-        - Mindig magyarul válaszolj.
-        - Legyél rövid, érthető és gyakorlatias.
-        - Ha valamiben nem vagy biztos, mondd meg.
-        - Tüske haverjaként válaszolj.
-
-        Felhasználó üzenete:
-        \(trimmedInput)
-        """
-
-        sendToOllama(prompt: fullPrompt, agent: agent)
-    }
-
-    private func sendToOllama(prompt: String, agent: Agent) {
+    private func sendToOllama(prompt: String, agent: Agent, url: URL) {
         isLoading = true
-
-        let selectedModel: String
-
-        switch agent {
-        case .csajos:
-            selectedModel = "csajos:latest"
-
-        case .oli:
-            selectedModel = "dagi:latest"
-
-        case .toki:
-            selectedModel = "llama3.2:latest"
-
-        case .tuske:
-            selectedModel = "llama3.2:latest"
-
-        case .teso:
-            selectedModel = "llama3.2:latest"
-        }
+        let selectedModel = agent.modelName
 
         let body: [String: Any] = [
             "model": selectedModel,
             "prompt": prompt,
             "stream": false,
-            "keep_alive": "30m",
+            "keep_alive": "5m",
             "options": [
                 "num_predict": 120,
                 "temperature": 0.45,
-                "num_ctx": 1024,
+                "num_ctx": 512,
                 "top_k": 20,
                 "top_p": 0.8,
                 "num_thread": 4
@@ -350,12 +185,12 @@ struct ContentView: View {
         ]
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
-            messages.append(ChatMessage(agent: agent, text: "Hiba: nem sikerült JSON-t készíteni.", isUser: false))
+            messages.append(ChatMessage(text: "Hiba: nem sikerült JSON-t készíteni.", isUser: false, agent: agent))
             isLoading = false
             return
         }
 
-        var request = URLRequest(url: ollamaURL)
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = jsonData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -366,24 +201,28 @@ struct ContentView: View {
                 isLoading = false
 
                 if let error = error {
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: \(error.localizedDescription)", isUser: false))
+                    messages.append(ChatMessage(text: "Hiba: \(error.localizedDescription)", isUser: false, agent: agent))
                     return
                 }
 
                 guard let data = data else {
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: nem jött válasz az Ollamától.", isUser: false))
+                    messages.append(ChatMessage(text: "Hiba: nem jött válasz az Ollamától.", isUser: false, agent: agent))
                     return
                 }
 
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let answer = json["response"] as? String {
-                    messages.append(ChatMessage(agent: agent, text: answer, isUser: false))
-                } else if let raw = String(data: data, encoding: .utf8) {
-                    messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
-                } else {
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható válasz.", isUser: false))
+                    messages.append(ChatMessage(text: answer, isUser: false, agent: agent))
+                    if !isMuted { voice.speak(answer) }
                 }
             }
         }.resume()
     }
+}
+
+struct ChatMessage: Identifiable {
+    let id = UUID()
+    let text: String
+    let isUser: Bool
+    let agent: Agent
 }
