@@ -34,42 +34,45 @@ struct ContentView: View {
         let normalized = normalize(command)
 
         if normalized.contains("terminal") {
-            AppLauncher.launch("Terminal")
-            status = "Terminal elindítva."
+            launch("Terminal")
 
         } else if normalized.contains("xcode") {
-            AppLauncher.launch("Xcode")
-            status = "Xcode elindítva."
+            launch("Xcode")
 
         } else if normalized.contains("safari") {
-            AppLauncher.launch("Safari")
-            status = "Safari elindítva."
+            launch("Safari")
 
         } else if normalized.contains("lokator")
                     || normalized.contains("find my") {
-            AppLauncher.launch("Find My")
-            status = "Lokátor elindítva."
+            launch("Find My", displayName: "Lokátor")
 
         } else if normalized.contains("finder") {
-            AppLauncher.launch("Finder")
-            status = "Finder elindítva."        } else if
+            launch("Finder")
 
-                normalized.contains("github") {
-            AppLauncher.launch("GitHub Desktop")
-            status = "GitHub Desktop elindítva."
+        } else if normalized.contains("github") {
+            launch("GitHub Desktop")
 
         } else if normalized.contains("visual studio code")
                     || normalized.contains("vs code")
                     || normalized.contains("vscode") {
-            AppLauncher.launch("Visual Studio Code")
-            status = "Visual Studio Code elindítva."
+            launch("Visual Studio Code")
 
         } else if normalized.contains("davinci") {
-            AppLauncher.launch("DaVinci Resolve")
-            status = "DaVinci Resolve elindítva."
+            launch("DaVinci Resolve")
 
         } else {
             status = "Ezt a parancsot még nem ismerem."
+        }
+    }
+
+    private func launch(_ appName: String, displayName: String? = nil) {
+        let shownName = displayName ?? appName
+        status = "\(shownName) indítása…"
+
+        AppLauncher.launch(appName) { succeeded in
+            status = succeeded
+                ? "\(shownName) elindítva."
+                : "\(shownName) nem található vagy nem indítható."
         }
     }
 

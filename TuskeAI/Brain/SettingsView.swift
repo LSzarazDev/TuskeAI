@@ -1,14 +1,27 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("macHost") var macHost: String = "192.168.31.59"
+    @AppStorage("macHost") var macHost: String = "192.168.31.127"
     @AppStorage("asusHost") var asusHost: String = "192.168.31.126"
     @AppStorage("activeServer") var activeServer: String = "mac"
     @Environment(\.dismiss) var dismiss
     @State private var testResult: String = ""
     @State private var isTesting: Bool = false
 
-    var activeHost: String { activeServer == "mac" ? macHost : asusHost }
+    var activeHost: String {
+        (activeServer == "mac" ? macHost : asusHost)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var tagsURL: URL? {
+        guard !activeHost.isEmpty else { return nil }
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = activeHost
+        components.port = 11434
+        components.path = "/api/tags"
+        return components.url
+    }
 
     var body: some View {
         NavigationView {
@@ -64,21 +77,34 @@ struct SettingsView: View {
     }
 
     private func testConnection() {
-        guard let url = URL(string: "http://\(activeHost):11434") else {
-            testResult = "❌ Érvénytelen IP cím"
+        guard let url = tagsURL else {
+            testResult = "❌ Érvénytelen IP-cím vagy gépnév"
             return
         }
         isTesting = true
         testResult = ""
 
-        URLSession.shared.dataTask(with: URLRequest(url: url)) { _, response, error in
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
                 isTesting = false
                 if let error = error {
                     testResult = "❌ Nem elérhető: \(error.localizedDescription)"
-                } else {
-                    testResult = "✅ Sikeres kapcsolat!"
+                    return
                 }
+
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode),
+                      let data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      json["models"] is [[String: Any]] else {
+                    testResult = "❌ A cím elérhető, de nem válaszol Ollama-szerverként"
+                    return
+                }
+
+                testResult = "✅ Ollama elérhető a(z) \(activeHost) címen"
             }
         }.resume()
     }

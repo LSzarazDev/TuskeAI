@@ -14,8 +14,8 @@ class VoiceManager {
     }
 
     private var voice: AVSpeechSynthesisVoice? {
-        // Magyar hang, ha nincs letöltve, alapértelmezettre esik vissza
-        AVSpeechSynthesisVoice(language: "hu-HU") ?? AVSpeechSynthesisVoice(language: "en-US")
+        AVSpeechSynthesisVoice(language: "es-ES")
+            ?? AVSpeechSynthesisVoice(language: "en-US")
     }
 
     func speak(_ text: String) {

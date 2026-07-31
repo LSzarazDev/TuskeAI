@@ -9,7 +9,7 @@ struct ContentView: View {
     @State private var hasEnteredWorkshop = false
     @State private var isMuted: Bool = false
     @State private var showSettings: Bool = false
-    @AppStorage("macHost") var macHost: String = "192.168.31.59"
+    @AppStorage("macHost") var macHost: String = "192.168.31.127"
     @AppStorage("asusHost") var asusHost: String = "192.168.31.126"
     @AppStorage("activeServer") var activeServer: String = "mac"
 
@@ -19,8 +19,16 @@ struct ContentView: View {
         agent.server == .mac ? macHost : asusHost
     }
 
-    private func ollamaURL(for agent: Agent) -> URL {
-        URL(string: "http://\(host(for: agent)):11434/api/generate") ?? URL(string: "http://192.168.31.77:11434/api/generate")!
+    private func ollamaURL(for agent: Agent) -> URL? {
+        let hostname = host(for: agent).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !hostname.isEmpty else { return nil }
+
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = hostname
+        components.port = 11434
+        components.path = "/api/generate"
+        return components.url
     }
 
     var body: some View {
@@ -30,6 +38,9 @@ struct ContentView: View {
             } else {
                 awakeningView
             }
+        }
+        .onChange(of: selectedAgent) { _, agent in
+            activeServer = agent.server == .mac ? "mac" : "asus"
         }
     }
 
@@ -92,12 +103,12 @@ struct ContentView: View {
                 }
                 .padding(.leading)
                 Spacer()
-                Text(activeServer == "mac" ? "Mac" : "ASUS")
+                Text(selectedAgent.server == .mac ? "Mac" : "ASUS")
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(activeServer == "mac" ? Color.blue.opacity(0.15) : Color.orange.opacity(0.15))
-                    .foregroundColor(activeServer == "mac" ? .blue : .orange)
+                    .background(selectedAgent.server == .mac ? Color.blue.opacity(0.15) : Color.orange.opacity(0.15))
+                    .foregroundColor(selectedAgent.server == .mac ? .blue : .orange)
                     .cornerRadius(8)
                 Spacer()
                 Button {
@@ -158,11 +169,32 @@ struct ContentView: View {
         let trimmed = userInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        messages.append(ChatMessage(text: trimmed, isUser: true, agent: selectedAgent))
+        let agent = selectedAgent
+        messages.append(ChatMessage(text: trimmed, isUser: true, agent: agent))
         userInput = ""
 
-        let prompt = "\(selectedAgent.role)\nFelhasználó: \(trimmed)"
-        sendToOllama(prompt: prompt, agent: selectedAgent, url: ollamaURL(for: selectedAgent))
+        guard let url = ollamaURL(for: agent) else {
+            messages.append(ChatMessage(
+                text: "Hiba: a(z) \(host(for: agent)) nem érvényes szervercím.",
+                isUser: false,
+                agent: agent
+            ))
+            return
+        }
+
+        sendToOllama(prompt: conversationPrompt(for: agent), agent: agent, url: url)
+    }
+
+    private func conversationPrompt(for agent: Agent) -> String {
+        let history = messages
+            .filter { $0.agent == agent }
+            .suffix(10)
+            .map { message in
+                "\(message.isUser ? "Felhasználó" : "Asszisztens"): \(message.text)"
+            }
+            .joined(separator: "\n")
+
+        return "\(agent.role)\n\(history)\nAsszisztens:"
     }
 
     private func sendToOllama(prompt: String, agent: Agent, url: URL) {
@@ -196,25 +228,40 @@ struct ContentView: View {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 120
 
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        URLSession.shared.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
                 isLoading = false
 
                 if let error = error {
-                    messages.append(ChatMessage(text: "Hiba: \(error.localizedDescription)", isUser: false, agent: agent))
+                    messages.append(ChatMessage(
+                        text: "Hiba: a(z) \(url.host ?? "Ollama") nem érhető el. \(error.localizedDescription)",
+                        isUser: false,
+                        agent: agent
+                    ))
                     return
                 }
 
-                guard let data = data else {
+                guard let data = data, let httpResponse = response as? HTTPURLResponse else {
                     messages.append(ChatMessage(text: "Hiba: nem jött válasz az Ollamától.", isUser: false, agent: agent))
                     return
                 }
 
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let answer = json["response"] as? String {
-                    messages.append(ChatMessage(text: answer, isUser: false, agent: agent))
-                    if !isMuted { voice.speak(answer) }
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                if !(200...299).contains(httpResponse.statusCode) {
+                    let detail = json?["error"] as? String ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                    messages.append(ChatMessage(text: "Ollama-hiba (\(httpResponse.statusCode)): \(detail)", isUser: false, agent: agent))
+                    return
                 }
+
+                guard let answer = json?["response"] as? String,
+                      !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    let detail = json?["error"] as? String ?? "A válasz nem tartalmazott szöveget."
+                    messages.append(ChatMessage(text: "Hiba: \(detail)", isUser: false, agent: agent))
+                    return
+                }
+
+                messages.append(ChatMessage(text: answer, isUser: false, agent: agent))
+                if !isMuted { voice.speak(answer) }
             }
         }.resume()
     }
