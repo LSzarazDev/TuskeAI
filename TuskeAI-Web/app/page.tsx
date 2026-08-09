@@ -1,0 +1,112 @@
+const pageHtml = `
+    <header class="site-header" data-elevate>
+      <a class="brand" href="#top" aria-label="TüskeAI kezdőlap">
+        <span class="brand-mark"><img class="brand-icon" src="assets/tuske-monogram.png" alt="" /></span>
+        <span>TüskeAI</span>
+      </a>
+      <nav class="nav" aria-label="Fő navigáció">
+        <a href="#about">Rendszer</a>
+        <a href="#modules">Modulok</a>
+        <a href="#demo">Demo</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <img class="hero-image" src="assets/tuske-hero.png" alt="TüskeAI poszter emberi és gépi együttműködéssel" />
+        <div class="hero-shade"></div>
+        <div class="hero-frame" aria-hidden="true"></div>
+        <div class="hero-content reveal">
+          <p class="eyebrow">Együtt építünk • Closed World • Local AI</p>
+          <h1 id="hero-title">TüskeAI</h1>
+          <p class="hero-slogan">Merj nagyot álmodni</p>
+          <p class="hero-lead">Moduláris AI ökoszisztéma saját karakterrel: emberi irányítás, helyi modellútvonalak, CRM és biztonsági réteg egy közös rendszerben.</p>
+          <div class="hero-actions" aria-label="Oldal műveletek">
+            <a class="button primary" href="#modules">Modulok</a>
+            <a class="button secondary" href="#demo">Demo kapcsolat</a>
+          </div>
+        </div>
+        <div class="hero-status reveal" aria-label="Rendszer állapot">
+          <span>Core</span>
+          <span>CRM</span>
+          <span>Mobil asszisztens</span>
+          <span>Security</span>
+        </div>
+      </section>
+
+      <section id="about" class="section intro reveal" aria-labelledby="about-title">
+        <div class="intro-copy">
+          <p class="section-kicker">Mi a TüskeAI?</p>
+          <h2 id="about-title">Nem sablon AI oldal. Saját műhely, saját rendszer.</h2>
+          <p>A TüskeAI külön projektekből álló, mégis összekötött rendszer. Vállalati és lakossági használatra is alakítható, előfizetéses formában, személyre szabható alkalmazással és egyedi modellbeállításokkal. A mag, az ügyfélkezelés, a mobil személyiség és a biztonsági interfész nem keveredik össze, de közös protokollokon keresztül együtt működnek.</p>
+        </div>
+        <div class="visual-stack" aria-label="TüskeAI vizuális karakterek">
+          <img src="assets/tuske-touch.jpeg" alt="TüskeAI ember és gép kapcsolódása" />
+          <img src="assets/tuske-plan.jpeg" alt="TüskeAI tervezés építés fejlesztés" />
+        </div>
+      </section>
+
+      <section id="modules" class="section modules" aria-labelledby="modules-title">
+        <div class="section-heading reveal">
+          <p class="section-kicker">Fő modulok</p>
+          <h2 id="modules-title">Külön projektek, közös irányítás.</h2>
+        </div>
+        <div class="module-grid">
+          <article class="module-card reveal core-card">
+            <span class="module-index">01</span>
+            <h3>TüskeAI-Core</h3>
+            <p>Agent identitások, modellhívások, világ- és koordinációs logika. Stabil közös pont a többi modul felé.</p>
+          </article>
+          <article class="module-card reveal crm-card">
+            <span class="module-index">02</span>
+            <h3>TüskeAI-CRM</h3>
+            <p>Ügyfelek, feladatok, jegyzetek és mobil asszisztens. Önálló CRM réteg, Core-kapcsolattal.</p>
+          </article>
+          <article class="module-card reveal mobile-assistant-card">
+            <span class="module-index">03</span>
+            <h3>Mobil asszisztens</h3>
+            <p>Mobil asszisztens alapú mobil AI élmény saját karakterrel és beszélgetési réteggel, külön iOS projektben tartva.</p>
+          </article>
+          <article class="module-card reveal security-card">
+            <span class="module-index">04</span>
+            <h3>TüskeAI-Security</h3>
+            <p>hamarosan</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="system-visual reveal" aria-labelledby="ecosystem-title">
+        <img src="assets/tuske-workshop.png" alt="TüskeAI műhely több agenttel és rendszerkomponenssel" />
+        <div class="system-overlay">
+          <p class="section-kicker">Egy ökoszisztéma</p>
+          <h2 id="ecosystem-title">Nem szétszórt másolatok. Egy műhelyben dolgozó modulok.</h2>
+        </div>
+      </section>
+
+      <section id="demo" class="section demo reveal" aria-labelledby="demo-title">
+        <div class="demo-copy">
+          <p class="section-kicker">Demo / kapcsolat</p>
+          <h2 id="demo-title">Bemutatóhoz vagy integrációhoz kész.</h2>
+          <p>A TüskeAI vállalati és lakossági csomagokban, előfizetéses alapon is elérhető. Az alkalmazás és a modellek igény szerint személyre szabhatók, miközben a fő projektek külön maradnak és közös rendszerként kapcsolódnak össze.</p>
+        </div>
+        <div class="demo-panel">
+          <video class="demo-video" src="assets/tuske-demo.m4v" poster="assets/tuske-hero.png" controls muted playsinline preload="metadata"></video>
+          <div class="contact-actions"><a class="button primary" href="mailto:lszarazdev@tuskeai.me">lszarazdev@tuskeai.me</a><a class="button secondary" href="mailto:social@tuskeai.me">social@tuskeai.me</a></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>TüskeAI</span>
+      <span>lszarazdev@tuskeai.me • social@tuskeai.me</span>
+    </footer>
+`;
+
+export default function Home() {
+  return (
+    <>
+      <div dangerouslySetInnerHTML={{ __html: pageHtml }} />
+      <script src="/script.js" defer />
+    </>
+  );
+}
