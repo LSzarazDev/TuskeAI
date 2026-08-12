@@ -4,6 +4,10 @@
 <dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>A TuskeAI a helyi hálózaton futó Ollama szerverhez csatlakozik.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>A TuskeAI mikrofont használ a hangalapú beszéd és kérdések rögzítéséhez.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>A TuskeAI beszédfelismerést használ a hangvezérléshez és a felhasználói kérdések feldolgozásához.</string>
 	<key>CFBundleGetInfoString</key>
 	<string></string>
 	<key>NSAppTransportSecurity</key>

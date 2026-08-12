@@ -50,6 +50,11 @@ final class PermissionEngine: ObservableObject {
         }
     }
 
+    func explicitUserDecision(for type: PermissionType) -> Bool {
+        let status = self.status(for: type)
+        return status == .denied || status == .restricted
+    }
+
     func request(_ type: PermissionType, completion: @escaping (Bool) -> Void = { _ in }) {
         switch type {
         case .microphone:
@@ -80,22 +85,23 @@ final class PermissionEngine: ObservableObject {
 
         for permission in required {
             group.enter()
-            request(permission) { granted in
-                results[permission] = granted
+
+            switch status(for: permission) {
+            case .granted:
+                results[permission] = true
                 group.leave()
+            case .denied, .restricted:
+                results[permission] = false
+                group.leave()
+            case .notDetermined, .unavailable:
+                request(permission) { granted in
+                    results[permission] = granted
+                    group.leave()
+                }
             }
         }
 
         group.notify(queue: .main) {
-            let allGranted = required.allSatisfy { results[$0] ?? false }
-            if !allGranted {
-                for permission in required {
-                    let status = self.status(for: permission)
-                    if status == .denied || status == .restricted {
-                        results[permission] = false
-                    }
-                }
-            }
             completion(results)
         }
     }

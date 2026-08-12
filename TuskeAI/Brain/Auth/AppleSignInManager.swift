@@ -1,6 +1,12 @@
 import Foundation
 import AuthenticationServices
 
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
 final class AppleSignInManager: NSObject, ObservableObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     @Published var isSignedIn = false
     @Published var userName = ""
@@ -33,11 +39,15 @@ final class AppleSignInManager: NSObject, ObservableObject, ASAuthorizationContr
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+#if os(iOS)
         let windowScene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive }
 
         return windowScene?.windows.first(where: { $0.isKeyWindow }) ?? UIWindow()
+#elseif os(macOS)
+        return NSApplication.shared.keyWindow ?? NSWindow()
+#endif
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
