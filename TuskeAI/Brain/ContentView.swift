@@ -1,6 +1,52 @@
 import SwiftUI
 import Foundation
 
+enum ModelProvider: String, CaseIterable, Identifiable {
+    case ollama
+    case openAICompatible
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .ollama: return "Ollama"
+        case .openAICompatible: return "OpenAI kompatibilis"
+        }
+    }
+}
+
+struct ModelPreset: Identifiable {
+    let id = UUID()
+    let name: String
+    let provider: ModelProvider
+    let endpoint: String
+    let modelName: String
+    let apiKey: String?
+}
+
+struct SavedModelProfile: Codable, Identifiable {
+    let id: UUID
+    var name: String
+    var provider: String
+    var endpoint: String
+    var modelName: String
+}
+
+struct AIModelConfig {
+    static let defaultProvider = ModelProvider.openAICompatible
+    static let defaultEndpoint = "https://api.openai.com/v1/chat/completions"
+    static let defaultModel = "gpt-4o-mini"
+    static let defaultAPIKey = ""
+
+    static let presets: [ModelPreset] = [
+        ModelPreset(name: "OpenAI GPT-4o mini", provider: .openAICompatible, endpoint: defaultEndpoint, modelName: defaultModel, apiKey: defaultAPIKey),
+        ModelPreset(name: "Ollama Csajos", provider: .ollama, endpoint: "http://100.105.25.106:11434/api/generate", modelName: "csajos:latest", apiKey: nil),
+        ModelPreset(name: "Ollama Llama 3.2", provider: .ollama, endpoint: "http://100.105.25.106:11434/api/generate", modelName: "llama3.2:latest", apiKey: nil),
+        ModelPreset(name: "Ollama Qwen 2.5", provider: .ollama, endpoint: "http://100.105.25.106:11434/api/generate", modelName: "qwen2.5:latest", apiKey: nil),
+        ModelPreset(name: "Ollama Mistral", provider: .ollama, endpoint: "http://100.105.25.106:11434/api/generate", modelName: "mistral:latest", apiKey: nil)
+    ]
+}
+
 enum Agent: String, CaseIterable, Identifiable {
     case oli = "Oli"
     case csajos = "Csajos"
@@ -65,11 +111,31 @@ struct ChatMessage: Identifiable {
 
 struct ContentView: View {
     private let voice = VoiceManager()
+    private let openAIAPIKeyKey = "tuskeai.openai.apiKey"
+    @StateObject private var permissionEngine = PermissionEngine.shared
+    @StateObject private var appleSignInManager = AppleSignInManager()
 
+    @AppStorage("tuskeai.modelProvider") private var modelProvider = AIModelConfig.defaultProvider.rawValue
+    @AppStorage("tuskeai.apiBaseURL") private var apiBaseURL = AIModelConfig.defaultEndpoint
+    @AppStorage("tuskeai.modelName") private var modelName = AIModelConfig.defaultModel
+    @AppStorage("tuskeai.syncToiCloud") private var syncToiCloud = false
+
+    @State private var apiKey = ""
     @State private var input: String = ""
     @State private var selectedAgent: Agent = .csajos
     @State private var isLoading: Bool = false
     @State private var hasEnteredWorkshop = false
+    @State private var isPermissionGateVisible = true
+    @State private var permissionsBlocked = false
+    @State private var showingModelSettings = false
+    @State private var showingProfileBuilder = false
+    @State private var customProvider: ModelProvider = AIModelConfig.defaultProvider
+    @State private var customEndpoint = AIModelConfig.defaultEndpoint
+    @State private var customModelName = AIModelConfig.defaultModel
+    @State private var customAPIKey = AIModelConfig.defaultAPIKey
+    @State private var profileName = ""
+    @State private var savedProfiles: [SavedModelProfile] = []
+    @State private var editingProfile: SavedModelProfile? = nil
 
     @State private var messages: [ChatMessage] = [
         ChatMessage(
@@ -86,14 +152,207 @@ struct ContentView: View {
         )
     ]
 
-    private let ollamaURL = URL(string: "http://100.105.25.106:11434/api/generate")!
-    private let modelName = "csajos:latest"
+    private var currentProvider: ModelProvider {
+        ModelProvider(rawValue: modelProvider) ?? AIModelConfig.defaultProvider
+    }
+
+    private var currentEndpointURL: URL {
+        URL(string: apiBaseURL) ?? URL(string: AIModelConfig.defaultEndpoint)!
+    }
+
+    private func loadSavedAPIKey() {
+        apiKey = KeychainHelper.load(forKey: openAIAPIKeyKey) ?? ""
+        customAPIKey = apiKey
+    }
+
+    private func saveAPIKey(_ value: String) {
+        if value.isEmpty {
+            KeychainHelper.delete(forKey: openAIAPIKeyKey)
+            apiKey = ""
+            customAPIKey = ""
+        } else {
+            KeychainHelper.save(value, forKey: openAIAPIKeyKey)
+            apiKey = value
+        }
+    }
+
+    private func loadSavedProfiles() {
+        if syncToiCloud {
+            CloudSyncManager.shared.fetchProfiles { cloudProfiles in
+                let mapped = cloudProfiles.map { cloudProfile in
+                    SavedModelProfile(
+                        id: UUID(uuidString: cloudProfile.id) ?? UUID(),
+                        name: cloudProfile.name,
+                        provider: cloudProfile.provider,
+                        endpoint: cloudProfile.endpoint,
+                        modelName: cloudProfile.modelName
+                    )
+                }
+
+                if !mapped.isEmpty {
+                    self.savedProfiles = mapped
+                } else {
+                    self.savedProfiles = self.loadLocalProfiles()
+                }
+            }
+            return
+        }
+
+        savedProfiles = loadLocalProfiles()
+    }
+
+    private func loadLocalProfiles() -> [SavedModelProfile] {
+        guard let data = UserDefaults.standard.data(forKey: "tuskeai.savedProfiles") else {
+            return []
+        }
+
+        do {
+            return try JSONDecoder().decode([SavedModelProfile].self, from: data)
+        } catch {
+            return []
+        }
+    }
+
+    private func saveProfiles() {
+        do {
+            let data = try JSONEncoder().encode(savedProfiles)
+            UserDefaults.standard.set(data, forKey: "tuskeai.savedProfiles")
+        } catch {
+            print("Failed to save profiles: \(error)")
+        }
+
+        if syncToiCloud {
+            for profile in savedProfiles {
+                let cloudProfile = TuskeAICloudProfile(
+                    id: profile.id.uuidString,
+                    name: profile.name,
+                    provider: profile.provider,
+                    endpoint: profile.endpoint,
+                    modelName: profile.modelName
+                )
+
+                CloudSyncManager.shared.saveProfile(cloudProfile) { _ in }
+            }
+        }
+    }
+
+    private func applyProfile(_ profile: SavedModelProfile) {
+        customProvider = ModelProvider(rawValue: profile.provider) ?? AIModelConfig.defaultProvider
+        customEndpoint = profile.endpoint
+        customModelName = profile.modelName
+        profileName = profile.name
+
+        modelProvider = customProvider.rawValue
+        apiBaseURL = customEndpoint
+        modelName = customModelName
+        showingModelSettings = false
+        showingProfileBuilder = false
+    }
+
+    private func beginEditingProfile(_ profile: SavedModelProfile) {
+        editingProfile = profile
+        profileName = profile.name
+        customProvider = ModelProvider(rawValue: profile.provider) ?? currentProvider
+        customEndpoint = profile.endpoint
+        customModelName = profile.modelName
+        customAPIKey = KeychainHelper.load(forKey: openAIAPIKeyKey) ?? ""
+        showingProfileBuilder = true
+    }
+
+    private func deleteProfile(_ profile: SavedModelProfile) {
+        savedProfiles.removeAll { $0.id == profile.id }
+        saveProfiles()
+
+        if editingProfile?.id == profile.id {
+            editingProfile = nil
+        }
+    }
 
     var body: some View {
-        if hasEnteredWorkshop {
+        if isPermissionGateVisible {
+            permissionGateView
+        } else if hasEnteredWorkshop {
             mainView
         } else {
             awakeningView
+        }
+    }
+
+    private var permissionGateView: some View {
+        VStack(spacing: 20) {
+            Text("TuskeAI • Jogosultságok")
+                .font(.title2)
+                .bold()
+
+            if permissionsBlocked {
+                Text("A műhely megnyitásához minden jogosultságot engedélyezni kell.")
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                PermissionRow(title: "Mikrofon", status: permissionEngine.status(for: .microphone))
+                PermissionRow(title: "Beszédfelismerés", status: permissionEngine.status(for: .speechRecognition))
+                PermissionRow(title: "Helyi hálózat", status: permissionEngine.status(for: .localNetwork))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                permissionEngine.requestRequiredPermissions { results in
+                    let allGranted = results.values.allSatisfy { $0 }
+                    if allGranted {
+                        permissionsBlocked = false
+                        isPermissionGateVisible = false
+                        hasEnteredWorkshop = true
+                    } else {
+                        permissionsBlocked = true
+                    }
+                }
+            } label: {
+                Text("Minden engedély megadása")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(14)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
+    }
+
+    private struct PermissionRow: View {
+        let title: String
+        let status: PermissionStatus
+
+        var statusText: String {
+            switch status {
+            case .granted: return "Engedélyezve"
+            case .denied: return "Elutasítva"
+            case .notDetermined: return "Várakozás"
+            case .restricted: return "Korlátozva"
+            case .unavailable: return "Nem elérhető"
+            }
+        }
+
+        var statusColor: Color {
+            switch status {
+            case .granted: return .green
+            case .denied: return .red
+            case .notDetermined: return .orange
+            case .restricted: return .yellow
+            case .unavailable: return .gray
+            }
+        }
+
+        var body: some View {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(statusText)
+                    .foregroundColor(statusColor)
+                    .bold()
+            }
         }
     }
 
@@ -115,6 +374,27 @@ struct ContentView: View {
                 Text("A műhely csendes.\nA banda bent van.\nCsak rád vár.")
                     .multilineTextAlignment(.center)
                     .foregroundColor(.white.opacity(0.75))
+
+                if appleSignInManager.isSignedIn {
+                    Text("Apple ID: \(appleSignInManager.userName)")
+                        .foregroundColor(.white.opacity(0.85))
+                }
+
+                Button {
+                    appleSignInManager.signIn()
+                } label: {
+                    Text(appleSignInManager.isSignedIn ? "Apple ID bejelentkezve" : "Apple ID bejelentkezés")
+                        .bold()
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.gray.opacity(0.2))
+                        )
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
 
                 Button {
                         hasEnteredWorkshop = true
@@ -144,17 +424,274 @@ struct ContentView: View {
             inputView
         }
         .padding()
+        .sheet(isPresented: $showingModelSettings) {
+            modelSettingsSheet
+                .onAppear {
+                    loadSavedAPIKey()
+                    loadSavedProfiles()
+                    customProvider = currentProvider
+                    customEndpoint = apiBaseURL
+                    customModelName = modelName
+                    customAPIKey = apiKey
+                }
+        }
+        .sheet(isPresented: $showingProfileBuilder) {
+            modelBuilderSheet
+                .onAppear {
+                    if let profile = editingProfile {
+                        profileName = profile.name
+                        customProvider = ModelProvider(rawValue: profile.provider) ?? currentProvider
+                        customEndpoint = profile.endpoint
+                        customModelName = profile.modelName
+                        customAPIKey = KeychainHelper.load(forKey: openAIAPIKeyKey) ?? ""
+                    } else {
+                        profileName = ""
+                        customProvider = currentProvider
+                        customEndpoint = apiBaseURL
+                        customModelName = modelName
+                        customAPIKey = apiKey
+                    }
+                }
+        }
     }
 
     private var headerView: some View {
         VStack(spacing: 6) {
-            Text("TuskeAI")
-                .font(.largeTitle)
-                .bold()
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("TuskeAI")
+                        .font(.largeTitle)
+                        .bold()
 
-            Text("\(selectedAgent.rawValue) • \(selectedAgent.role)")
-                .font(.subheadline)
-                .foregroundColor(selectedAgent.color)
+                    Text("\(selectedAgent.rawValue) • \(selectedAgent.role)")
+                        .font(.subheadline)
+                        .foregroundColor(selectedAgent.color)
+                }
+
+                Spacer()
+
+                Button {
+                    showingModelSettings = true
+                } label: {
+                    Label("Modell", systemImage: "cpu")
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(Color.blue.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text("Aktív backend: \(currentProvider.displayName) • \(modelName)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var modelSettingsSheet: some View {
+        NavigationStack {
+            Form {
+                Section("iCloud szinkron") {
+                    Toggle("Szinkronizálás iCloudban", isOn: $syncToiCloud)
+                }
+
+                Section("Backend típus") {
+                    Picker("Provider", selection: $customProvider) {
+                        ForEach(ModelProvider.allCases) { provider in
+                            Text(provider.displayName).tag(provider)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section("Endpoint") {
+                    TextField(customProvider == .openAICompatible ? "https://api.openai.com/v1/chat/completions" : "http://localhost:11434/api/generate", text: $customEndpoint)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                }
+
+                Section("Modell neve") {
+                    TextField(customProvider == .openAICompatible ? "gpt-4o-mini" : "csajos:latest", text: $customModelName)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                }
+
+                if customProvider == .openAICompatible {
+                    Section("API kulcs (opcionális)") {
+                        SecureField("sk-...", text: $customAPIKey)
+
+                        if !customAPIKey.isEmpty {
+                            Button("Kulcs törlése") {
+                                customAPIKey = ""
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                }
+
+                Section("Mentett profilok") {
+                    if savedProfiles.isEmpty {
+                        Text("Még nincs profil.")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(savedProfiles) { profile in
+                            HStack {
+                                Button {
+                                    applyProfile(profile)
+                                } label: {
+                                    HStack {
+                                        Text(profile.name)
+                                        Spacer()
+                                        Text(profile.modelName)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    beginEditingProfile(profile)
+                                } label: {
+                                    Image(systemName: "pencil")
+                                        .foregroundColor(.blue)
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    deleteProfile(profile)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Button {
+                        editingProfile = nil
+                        showingProfileBuilder = true
+                    } label: {
+                        Label("Új profil létrehozása", systemImage: "plus")
+                    }
+                }
+
+                Section("Előre beállított modellek") {
+                    ForEach(AIModelConfig.presets) { preset in
+                        Button {
+                            customProvider = preset.provider
+                            customEndpoint = preset.endpoint
+                            customModelName = preset.modelName
+                            customAPIKey = preset.apiKey ?? ""
+                        } label: {
+                            HStack {
+                                Text(preset.name)
+                                Spacer()
+                                Text(preset.modelName)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("AI modell beállítás")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Mégse") {
+                        showingModelSettings = false
+                        customProvider = currentProvider
+                        customEndpoint = apiBaseURL
+                        customModelName = modelName
+                        customAPIKey = apiKey
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Mentés") {
+                        modelProvider = customProvider.rawValue
+                        apiBaseURL = customEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+                        modelName = customModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let trimmedKey = customAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                        saveAPIKey(trimmedKey)
+                        showingModelSettings = false
+                    }
+                }
+            }
+        }
+    }
+
+    private var modelBuilderSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Profil neve") {
+                    TextField("Pl. Tüske GPT", text: $profileName)
+                }
+
+                Section("Backend típus") {
+                    Picker("Provider", selection: $customProvider) {
+                        ForEach(ModelProvider.allCases) { provider in
+                            Text(provider.displayName).tag(provider)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section("Endpoint") {
+                    TextField(customProvider == .openAICompatible ? "https://api.openai.com/v1/chat/completions" : "http://localhost:11434/api/generate", text: $customEndpoint)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                }
+
+                Section("Modell neve") {
+                    TextField(customProvider == .openAICompatible ? "gpt-4o-mini" : "csajos:latest", text: $customModelName)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                }
+
+                if customProvider == .openAICompatible {
+                    Section("API kulcs") {
+                        SecureField("sk-...", text: $customAPIKey)
+                    }
+                }
+            }
+            .navigationTitle("Új modell profil")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Mégse") {
+                        editingProfile = nil
+                        showingProfileBuilder = false
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Mentés") {
+                        let name = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !name.isEmpty else { return }
+
+                        let profile = SavedModelProfile(
+                            id: editingProfile?.id ?? UUID(),
+                            name: name,
+                            provider: customProvider.rawValue,
+                            endpoint: customEndpoint.trimmingCharacters(in: .whitespacesAndNewlines),
+                            modelName: customModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        )
+
+                        if let existingIndex = savedProfiles.firstIndex(where: { $0.id == editingProfile?.id }) {
+                            savedProfiles[existingIndex] = profile
+                        } else {
+                            savedProfiles.append(profile)
+                        }
+
+                        saveProfiles()
+
+                        if customProvider == .openAICompatible {
+                            saveAPIKey(customAPIKey.trimmingCharacters(in: .whitespacesAndNewlines))
+                        }
+
+                        editingProfile = nil
+                        applyProfile(profile)
+                    }
+                }
+            }
         }
     }
 
@@ -295,7 +832,82 @@ struct ContentView: View {
         \(trimmedInput)
         """
 
-        sendToOllama(prompt: fullPrompt, agent: agent)
+        sendToModel(prompt: fullPrompt, agent: agent)
+    }
+
+    private func sendToModel(prompt: String, agent: Agent) {
+        switch currentProvider {
+        case .openAICompatible:
+            sendToOpenAICompatible(prompt: prompt, agent: agent)
+        case .ollama:
+            sendToOllama(prompt: prompt, agent: agent)
+        }
+    }
+
+    private func sendToOpenAICompatible(prompt: String, agent: Agent) {
+        isLoading = true
+
+        let body: [String: Any] = [
+            "model": modelName,
+            "messages": [
+                ["role": "system", "content": agent.systemPrompt],
+                ["role": "user", "content": prompt]
+            ],
+            "temperature": 0.45,
+            "max_tokens": 400
+        ]
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
+            messages.append(ChatMessage(agent: agent, text: "Hiba: nem sikerült JSON-t készíteni a modellhíváshoz.", isUser: false))
+            isLoading = false
+            return
+        }
+
+        var request = URLRequest(url: currentEndpointURL)
+        request.httpMethod = "POST"
+        request.httpBody = jsonData
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120
+
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            DispatchQueue.main.async {
+                isLoading = false
+
+                if let error = error {
+                    messages.append(ChatMessage(agent: agent, text: "Hiba: \(error.localizedDescription)", isUser: false))
+                    return
+                }
+
+                guard let data = data else {
+                    messages.append(ChatMessage(agent: agent, text: "Hiba: nem jött válasz az OpenAI kompatibilis modellből.", isUser: false))
+                    return
+                }
+
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    if let raw = String(data: data, encoding: .utf8) {
+                        messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
+                    } else {
+                        messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható válasz.", isUser: false))
+                    }
+                    return
+                }
+
+                if let choices = json["choices"] as? [[String: Any]],
+                   let firstChoice = choices.first,
+                   let message = firstChoice["message"] as? [String: Any],
+                   let content = message["content"] as? String {
+                    messages.append(ChatMessage(agent: agent, text: content, isUser: false))
+                } else if let raw = String(data: data, encoding: .utf8) {
+                    messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
+                } else {
+                    messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható OpenAI válasz.", isUser: false))
+                }
+            }
+        }.resume()
     }
 
     private func sendToOllama(prompt: String, agent: Agent) {
@@ -322,7 +934,7 @@ struct ContentView: View {
             return
         }
 
-        var request = URLRequest(url: ollamaURL)
+        var request = URLRequest(url: currentEndpointURL)
         request.httpMethod = "POST"
         request.httpBody = jsonData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
