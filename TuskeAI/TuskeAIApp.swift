@@ -11,7 +11,7 @@ import SwiftUI
 struct TuskeAIApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            TuskeAssistantRootView()
         }
     }
 }
