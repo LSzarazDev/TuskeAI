@@ -158,6 +158,8 @@ struct ChatMessage: Identifiable {
 }
 
 struct ContentView: View {
+    @Binding var assistantState: TuskeAssistantState
+
     private let voice = VoiceManager()
     private let openAIAPIKeyKey = "tuskeai.openai.apiKey"
     @StateObject private var permissionEngine = PermissionEngine.shared
@@ -208,6 +210,22 @@ struct ContentView: View {
 
     private var currentEndpointURL: URL {
         URL(string: apiBaseURL) ?? URL(string: AIModelConfig.defaultEndpoint)!
+    }
+
+    init(assistantState: Binding<TuskeAssistantState> = .constant(.idle)) {
+        self._assistantState = assistantState
+    }
+
+    private func setAssistantState(_ state: TuskeAssistantState) {
+        assistantState = state
+    }
+
+    private func restoreAssistantIdle() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if assistantState == .thinking || assistantState == .speaking || assistantState == .listening {
+                assistantState = .idle
+            }
+        }
     }
 
     private func loadSavedAPIKey() {
@@ -938,11 +956,14 @@ struct ContentView: View {
         guard !trimmedInput.isEmpty else { return }
 
         guard validatePermissionGate(for: "model_call") else {
+            setAssistantState(.sick)
             messages.append(ChatMessage(agent: selectedAgent, text: "A PermissionEngine szabalyai miatt a modellhivas blokkolva: hianyzik legalabb egy szukseges jogosultsag.", isUser: false))
+            restoreAssistantIdle()
             return
         }
 
         let agent = selectedAgent
+        setAssistantState(.thinking)
 
         messages.append(ChatMessage(agent: nil, text: trimmedInput, isUser: true))
         input = ""
@@ -961,6 +982,7 @@ struct ContentView: View {
 
     private func sendToOpenAICompatible(prompt: String, agent: Agent) {
         isLoading = true
+        setAssistantState(.thinking)
         let systemInstruction = effectiveSystemInstruction(for: agent)
 
         let body: [String: Any] = [
@@ -974,8 +996,10 @@ struct ContentView: View {
         ]
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
+            setAssistantState(.error)
             messages.append(ChatMessage(agent: agent, text: "Hiba: nem sikerült JSON-t készíteni a modellhíváshoz.", isUser: false))
             isLoading = false
+            restoreAssistantIdle()
             return
         }
 
@@ -994,21 +1018,28 @@ struct ContentView: View {
                 isLoading = false
 
                 if let error = error {
+                    setAssistantState(.error)
                     messages.append(ChatMessage(agent: agent, text: "Hiba: \(error.localizedDescription)", isUser: false))
+                    restoreAssistantIdle()
                     return
                 }
 
                 guard let data = data else {
+                    setAssistantState(.sick)
                     messages.append(ChatMessage(agent: agent, text: "Hiba: nem jött válasz az OpenAI kompatibilis modellből.", isUser: false))
+                    restoreAssistantIdle()
                     return
                 }
 
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     if let raw = String(data: data, encoding: .utf8) {
+                        setAssistantState(.speaking)
                         messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
                     } else {
+                        setAssistantState(.error)
                         messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható válasz.", isUser: false))
                     }
+                    restoreAssistantIdle()
                     return
                 }
 
@@ -1016,18 +1047,23 @@ struct ContentView: View {
                    let firstChoice = choices.first,
                    let message = firstChoice["message"] as? [String: Any],
                    let content = message["content"] as? String {
+                    setAssistantState(.speaking)
                     messages.append(ChatMessage(agent: agent, text: content, isUser: false))
                 } else if let raw = String(data: data, encoding: .utf8) {
+                    setAssistantState(.speaking)
                     messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
                 } else {
+                    setAssistantState(.error)
                     messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható OpenAI válasz.", isUser: false))
                 }
+                restoreAssistantIdle()
             }
         }.resume()
     }
 
     private func sendToOllama(prompt: String, agent: Agent) {
         isLoading = true
+        setAssistantState(.thinking)
         let systemInstruction = effectiveSystemInstruction(for: agent)
         let ollamaPrompt = """
         [SYSTEM INSTRUCTION]
@@ -1053,8 +1089,10 @@ struct ContentView: View {
         ]
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
+            setAssistantState(.error)
             messages.append(ChatMessage(agent: agent, text: "Hiba: nem sikerült JSON-t készíteni.", isUser: false))
             isLoading = false
+            restoreAssistantIdle()
             return
         }
 
@@ -1069,23 +1107,31 @@ struct ContentView: View {
                 isLoading = false
 
                 if let error = error {
+                    setAssistantState(.error)
                     messages.append(ChatMessage(agent: agent, text: "Hiba: \(error.localizedDescription)", isUser: false))
+                    restoreAssistantIdle()
                     return
                 }
 
                 guard let data = data else {
+                    setAssistantState(.sick)
                     messages.append(ChatMessage(agent: agent, text: "Hiba: nem jött válasz az Ollamától.", isUser: false))
+                    restoreAssistantIdle()
                     return
                 }
 
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let answer = json["response"] as? String {
+                    setAssistantState(.speaking)
                     messages.append(ChatMessage(agent: agent, text: answer, isUser: false))
                 } else if let raw = String(data: data, encoding: .utf8) {
+                    setAssistantState(.speaking)
                     messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
                 } else {
+                    setAssistantState(.error)
                     messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható válasz.", isUser: false))
                 }
+                restoreAssistantIdle()
             }
         }.resume()
     }

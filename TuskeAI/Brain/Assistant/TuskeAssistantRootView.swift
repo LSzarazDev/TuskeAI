@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TuskeAssistantRootView: View {
     @State private var assistantState: TuskeAssistantState = .idle
+    @State private var showLegacyUI = false
     @State private var isBubbleExpanded = true
     @State private var inputText = ""
 
@@ -9,7 +10,9 @@ struct TuskeAssistantRootView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if isBubbleExpanded {
+            if showLegacyUI {
+                legacyFallbackView
+            } else if isBubbleExpanded {
                 fullAssistantView
             } else {
                 bubbleView
@@ -62,16 +65,31 @@ struct TuskeAssistantRootView: View {
 
             Spacer()
 
-            Button {
-                isBubbleExpanded = false
-            } label: {
-                Image(systemName: "minus")
-                    .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Circle())
+            HStack(spacing: 8) {
+                Button {
+                    showLegacyUI = true
+                } label: {
+                    Text("Legacy")
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    isBubbleExpanded = false
+                } label: {
+                    Image(systemName: "minus")
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 18)
         .padding(.top, 14)
@@ -120,30 +138,13 @@ struct TuskeAssistantRootView: View {
                 .font(.headline)
                 .foregroundColor(.white)
 
-            Text("A PermissionEngine és a profilbiztonsági szabályok aktívak; a Tüske asszisztens felülete a fő nézet.")
-                .font(.body)
-                .foregroundColor(.white.opacity(0.8))
-
-            HStack(spacing: 12) {
-                statusBadge("Permission", .green)
-                statusBadge("Profil", .cyan)
-                statusBadge("Memory", .blue)
-            }
+            ContentView(assistantState: $assistantState)
+                .frame(maxWidth: .infinity, minHeight: 220)
+                .background(Color.black.opacity(0.22))
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 120)
-        .background(Color.black.opacity(0.22))
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-    }
-
-    private func statusBadge(_ label: String, _ color: Color) -> some View {
-        Text(label)
-            .font(.caption2)
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(color.opacity(0.2))
-            .clipShape(Capsule())
+        .frame(maxWidth: .infinity)
     }
 
     private var inputBar: some View {
@@ -184,28 +185,43 @@ struct TuskeAssistantRootView: View {
             Spacer()
             HStack {
                 Spacer()
-                Button {
-                    isBubbleExpanded = true
-                    assistantState = .idle
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(colors: [.cyan, .blue], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 86, height: 86)
-                            .shadow(color: .cyan.opacity(0.45), radius: 18, x: 0, y: 10)
-
-                        Image(systemName: "sparkles")
-                            .font(.title2)
-                            .foregroundColor(.white)
+                TuskeAssistantBubbleView(
+                    size: 86,
+                    accentColor: .cyan,
+                    action: {
+                        isBubbleExpanded = true
+                        assistantState = .idle
                     }
-                }
-                .buttonStyle(.plain)
+                )
                 .padding(.trailing, 18)
                 .padding(.bottom, 18)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.2))
+    }
+
+    private var legacyFallbackView: some View {
+        ZStack(alignment: .topTrailing) {
+            ContentView(assistantState: $assistantState)
+                .ignoresSafeArea()
+
+            Button {
+                showLegacyUI = false
+                isBubbleExpanded = true
+            } label: {
+                Text("Tüske UI")
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.5))
+                    .foregroundColor(.white)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 18)
+            .padding(.trailing, 18)
+        }
     }
 
     private func colorForState(_ state: TuskeAssistantState) -> Color {
