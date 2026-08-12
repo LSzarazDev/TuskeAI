@@ -7,6 +7,16 @@ struct TuskeAICloudProfile: Codable, Identifiable {
     let provider: String
     let endpoint: String
     let modelName: String
+    let personality: String
+
+    init(id: String, name: String, provider: String, endpoint: String, modelName: String, personality: String = "") {
+        self.id = id
+        self.name = name
+        self.provider = provider
+        self.endpoint = endpoint
+        self.modelName = modelName
+        self.personality = personality
+    }
 }
 
 final class CloudSyncManager {
@@ -33,7 +43,8 @@ final class CloudSyncManager {
                     return nil
                 }
 
-                return TuskeAICloudProfile(id: id, name: name, provider: provider, endpoint: endpoint, modelName: modelName)
+                                let personality = record["personality"] as? String ?? ""
+                                return TuskeAICloudProfile(id: id, name: name, provider: provider, endpoint: endpoint, modelName: modelName, personality: personality)
             }
 
             DispatchQueue.main.async {
@@ -49,6 +60,7 @@ final class CloudSyncManager {
         record["provider"] = profile.provider
         record["endpoint"] = profile.endpoint
         record["modelName"] = profile.modelName
+        record["personality"] = profile.personality
 
         database.save(record) { _, error in
             DispatchQueue.main.async {
