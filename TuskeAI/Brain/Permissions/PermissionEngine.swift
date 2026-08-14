@@ -1,6 +1,10 @@
 import Foundation
 import AVFoundation
 import Speech
+import EventKit
+#if canImport(Contacts)
+import Contacts
+#endif
 
 enum PermissionStatus {
     case notDetermined
@@ -14,6 +18,9 @@ enum PermissionType {
     case microphone
     case speechRecognition
     case localNetwork
+    case calendar
+    case reminders
+    case contacts
 }
 
 final class PermissionEngine: ObservableObject {
@@ -47,6 +54,40 @@ final class PermissionEngine: ObservableObject {
 
         case .localNetwork:
             return .granted
+
+        case .calendar:
+            let status = EKEventStore.authorizationStatus(for: .event)
+            switch status {
+            case .authorized: return .granted
+            case .denied: return .denied
+            case .restricted: return .restricted
+            case .notDetermined: return .notDetermined
+            @unknown default: return .unavailable
+            }
+
+        case .reminders:
+            let status = EKEventStore.authorizationStatus(for: .reminder)
+            switch status {
+            case .authorized: return .granted
+            case .denied: return .denied
+            case .restricted: return .restricted
+            case .notDetermined: return .notDetermined
+            @unknown default: return .unavailable
+            }
+
+        case .contacts:
+            #if canImport(Contacts)
+            let status = CNContactStore.authorizationStatus(for: .contacts)
+            switch status {
+            case .authorized: return .granted
+            case .denied: return .denied
+            case .restricted: return .restricted
+            case .notDetermined: return .notDetermined
+            @unknown default: return .unavailable
+            }
+            #else
+            return .unavailable
+            #endif
         }
     }
 
@@ -74,11 +115,39 @@ final class PermissionEngine: ObservableObject {
 
         case .localNetwork:
             completion(true)
+
+        case .calendar:
+            let store = EKEventStore()
+            store.requestAccess(to: .event) { granted, _ in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+
+        case .reminders:
+            let store = EKEventStore()
+            store.requestAccess(to: .reminder) { granted, _ in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+
+        case .contacts:
+            #if canImport(Contacts)
+            let store = CNContactStore()
+            store.requestAccess(for: .contacts) { granted, _ in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+            #else
+            completion(false)
+            #endif
         }
     }
 
     func requestRequiredPermissions(completion: @escaping ([PermissionType: Bool]) -> Void = { _ in }) {
-        let required: [PermissionType] = [.microphone, .speechRecognition, .localNetwork]
+        let required: [PermissionType] = [.microphone, .speechRecognition, .localNetwork, .calendar, .reminders, .contacts]
         var results: [PermissionType: Bool] = [:]
 
         let group = DispatchGroup()

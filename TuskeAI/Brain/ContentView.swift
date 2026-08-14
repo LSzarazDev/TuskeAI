@@ -1,5 +1,8 @@
 import SwiftUI
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum ModelProvider: String, CaseIterable, Identifiable {
     case ollama
@@ -176,8 +179,11 @@ struct ContentView: View {
     @State private var selectedAgent: Agent = .csajos
     @State private var isLoading: Bool = false
     @State private var hasEnteredWorkshop = false
-    @State private var isPermissionGateVisible = true
+    @State private var isPermissionGateVisible = false
     @State private var permissionsBlocked = false
+    @State private var callLog: [String] = []
+    @State private var calendarItems: [String] = []
+    @State private var notes: [String] = []
     @State private var showingModelSettings = false
     @State private var showingProfileBuilder = false
     @State private var customProvider: ModelProvider = AIModelConfig.defaultProvider
@@ -337,14 +343,17 @@ struct ContentView: View {
         return required.allSatisfy { permissionEngine.status(for: $0) == .granted }
     }
 
-    private func validatePermissionGate(for action: String) -> Bool {
-        guard hasRequiredPermissionsForModelCall() else {
-            return false
-        }
+    private func hasRequiredPermissionsForNativeFeatures() -> Bool {
+        let required: [PermissionType] = [.microphone, .speechRecognition, .localNetwork, .calendar, .reminders, .contacts]
+        return required.allSatisfy { permissionEngine.status(for: $0) == .granted }
+    }
 
+    private func validatePermissionGate(for action: String) -> Bool {
         switch action {
         case "model_call":
-            return true
+            return hasRequiredPermissionsForModelCall()
+        case "native_features":
+            return hasRequiredPermissionsForNativeFeatures()
         default:
             return true
         }
@@ -429,6 +438,9 @@ struct ContentView: View {
                     PermissionRow(title: "Mikrofon", status: permissionEngine.status(for: .microphone))
                     PermissionRow(title: "Beszédfelismerés", status: permissionEngine.status(for: .speechRecognition))
                     PermissionRow(title: "Helyi hálózat", status: permissionEngine.status(for: .localNetwork))
+                    PermissionRow(title: "Naptár", status: permissionEngine.status(for: .calendar))
+                    PermissionRow(title: "Emlékeztetők", status: permissionEngine.status(for: .reminders))
+                    PermissionRow(title: "Névjegyek", status: permissionEngine.status(for: .contacts))
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1026,6 +1038,10 @@ struct ContentView: View {
         HStack(spacing: 10) {
             TextField("Írd be, amit szeretnél...", text: $input)
                 .textFieldStyle(.roundedBorder)
+                .submitLabel(.send)
+                .onSubmit {
+                    sendPrompt()
+                }
                 .disabled(isLoading)
 
             Button {
@@ -1038,14 +1054,88 @@ struct ContentView: View {
         }
     }
 
+    private func handleBuiltInActions(_ prompt: String) -> Bool {
+        let text = prompt.lowercased()
+
+        if text.contains("hiv") || text.contains("hív") || text.contains("call") || text.contains("telefon") {
+            let cleaned = prompt.replacingOccurrences(of: "hívj", with: "")
+                .replacingOccurrences(of: "hivj", with: "")
+                .replacingOccurrences(of: "hívás", with: "")
+                .replacingOccurrences(of: "hivas", with: "")
+                .replacingOccurrences(of: "telefon", with: "")
+                .replacingOccurrences(of: "call", with: "")
+                .trimmingCharacters(in: .whitespacesAndPunctuationCharacters)
+
+            let contactName = cleaned.isEmpty ? "kapcsolat" : cleaned
+            callLog.append(contactName)
+
+            #if os(iOS)
+            if let number = URL(string: "tel://\(contactName.replacingOccurrences(of: " ", with: ""))") {
+                UIApplication.shared.open(number)
+            }
+            #endif
+
+            messages.append(ChatMessage(agent: selectedAgent, text: "Hívás kezdeményezve: \(contactName).", isUser: false))
+            setAssistantState(.speaking)
+            restoreAssistantIdle()
+            return true
+        }
+
+        if text.contains("naptár") || text.contains("calendar") || text.contains("emlékeztető") || text.contains("emlekezteto") {
+            let item = text.contains("naptár") ? "Naptár nézet megnyitva" : "Emlékeztető kész"
+            calendarItems.append(item)
+            messages.append(ChatMessage(agent: selectedAgent, text: "Naptár: \(item)", isUser: false))
+            setAssistantState(.speaking)
+            restoreAssistantIdle()
+            return true
+        }
+
+        if text.contains("jegyzet") || text.contains("feladat") || text.contains("memo") {
+            let note = prompt.replacingOccurrences(of: "jegyzet", with: "")
+                .replacingOccurrences(of: "feladat", with: "")
+                .replacingOccurrences(of: "memo", with: "")
+                .trimmingCharacters(in: .whitespacesAndPunctuationCharacters)
+            let finalNote = note.isEmpty ? "Új feladat" : note
+            notes.append(finalNote)
+            messages.append(ChatMessage(agent: selectedAgent, text: "Jegyzet/feladat mentve: \(finalNote)", isUser: false))
+            setAssistantState(.speaking)
+            restoreAssistantIdle()
+            return true
+        }
+
+        if text.contains("dátum") || text.contains("datum") || text.contains("idő") || text.contains("ido") || text.contains("time") || text.contains("date") {
+            let now = Date()
+            let formatter = DateFormatter()
+            formatter.dateStyle = .full
+            formatter.timeStyle = .short
+            let stamp = formatter.string(from: now)
+            messages.append(ChatMessage(agent: selectedAgent, text: "Jelenlegi idő: \(stamp)", isUser: false))
+            setAssistantState(.speaking)
+            restoreAssistantIdle()
+            return true
+        }
+
+        if text.contains("lista") || text.contains("állapot") || text.contains("status") {
+            let summary = [
+                "Hívások: \(callLog.count)",
+                "Naptár elemek: \(calendarItems.count)",
+                "Jegyzetek: \(notes.count)"
+            ].joined(separator: " • ")
+            messages.append(ChatMessage(agent: selectedAgent, text: summary, isUser: false))
+            setAssistantState(.speaking)
+            restoreAssistantIdle()
+            return true
+        }
+
+        return false
+    }
+
     private func sendPrompt() {
         let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInput.isEmpty else { return }
 
-        guard validatePermissionGate(for: "model_call") else {
-            setAssistantState(.sick)
-            messages.append(ChatMessage(agent: selectedAgent, text: "A PermissionEngine szabalyai miatt a modellhivas blokkolva: hianyzik legalabb egy szukseges jogosultsag.", isUser: false))
-            restoreAssistantIdle()
+        if handleBuiltInActions(trimmedInput) {
+            input = ""
             return
         }
 

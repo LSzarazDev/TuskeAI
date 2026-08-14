@@ -462,11 +462,15 @@ struct TuskeAssistantRootView: View {
 
             TextField("Írd be, amit szeretnél...", text: $inputText)
                 .textFieldStyle(.roundedBorder)
+                .submitLabel(.send)
+                .onSubmit {
+                    submitInputText()
+                }
                 .foregroundColor(.white)
                 .tint(.cyan)
 
             Button {
-                assistantState = .speaking
+                submitInputText()
             } label: {
                 Text("Küldés")
                     .font(.headline)
@@ -478,6 +482,14 @@ struct TuskeAssistantRootView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func submitInputText() {
+        let trimmedInput = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInput.isEmpty else { return }
+
+        assistantState = .thinking
+        inputText = ""
     }
 
     private var bubbleView: some View {
