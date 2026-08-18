@@ -1319,7 +1319,7 @@ struct ContentView: View {
             let contactName = cleaned.isEmpty ? "kapcsolat" : cleaned
             callLog.append(contactName)
 
-            #if os(iOS)
+            #if canImport(UIKit)
             if let number = URL(string: "tel://\(contactName.replacingOccurrences(of: " ", with: ""))") {
                 UIApplication.shared.open(number)
             }
