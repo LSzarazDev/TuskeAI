@@ -12,6 +12,7 @@ final class VoiceManager {
 
     func speak(_ text: String, enabled: Bool = true) {
         guard enabled else { return }
+        guard isAvailable else { return }
 
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }

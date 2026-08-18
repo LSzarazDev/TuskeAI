@@ -199,6 +199,14 @@ struct ContentView: View {
     @State private var lastMessageID: UUID? = nil
     @State private var voiceEnabled = true
     @State private var lastAppLifecycleState: String = "unknown"
+    private var idleResetWorkItem: DispatchWorkItem?
+
+    private func syncVoiceAvailability() {
+        if !voice.isAvailable {
+            voiceEnabled = false
+            voice.stop()
+        }
+    }
 
     @State private var messages: [ChatMessage] = [
         ChatMessage(
@@ -226,7 +234,14 @@ struct ContentView: View {
     private var isModelConfigured: Bool {
         let trimmedEndpoint = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmedEndpoint.isEmpty && !trimmedModel.isEmpty && URL(string: trimmedEndpoint) != nil
+        let hasValidEndpoint = !trimmedEndpoint.isEmpty && !trimmedModel.isEmpty && URL(string: trimmedEndpoint) != nil
+
+        if currentProvider == .openAICompatible {
+            let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            return hasValidEndpoint && !trimmedKey.isEmpty
+        }
+
+        return hasValidEndpoint
     }
 
     private var canUseAssistant: Bool {
@@ -237,6 +252,9 @@ struct ContentView: View {
         if !validatePermissionGate(for: "model_call") {
             return "Engedélyek várnak"
         }
+        if currentProvider == .openAICompatible && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "API kulcs hiányzik"
+        }
         if !isModelConfigured {
             return "Modell beállítás hiányzik"
         }
@@ -244,14 +262,19 @@ struct ContentView: View {
     }
 
     private func refreshAppReadinessState() {
-        if !validatePermissionGate(for: "model_call") {
+        let hasValidPermissions = validatePermissionGate(for: "model_call")
+        let hasValidModel = isModelConfigured
+
+        hasCompletedSetup = hasValidPermissions && hasValidModel
+
+        if !hasValidPermissions {
             isPermissionGateVisible = true
             hasEnteredWorkshop = false
             assistantState = .unauthorized
             return
         }
 
-        if !isModelConfigured {
+        if !hasValidModel {
             isPermissionGateVisible = false
             hasEnteredWorkshop = false
             assistantState = .idle
@@ -272,11 +295,16 @@ struct ContentView: View {
     }
 
     private func restoreAssistantIdle() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if assistantState == .thinking || assistantState == .speaking || assistantState == .listening || assistantState == .offline || assistantState == .unauthorized || assistantState == .error || assistantState == .sick {
-                assistantState = .idle
+        idleResetWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem {
+            if self.assistantState == .thinking || self.assistantState == .speaking || self.assistantState == .listening || self.assistantState == .offline || self.assistantState == .unauthorized || self.assistantState == .error || self.assistantState == .sick {
+                self.assistantState = .idle
             }
         }
+
+        idleResetWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
     }
 
     private func handleModelFailure(_ error: ModelServiceError, for agent: Agent) {
@@ -384,8 +412,20 @@ struct ContentView: View {
         apiBaseURL = customEndpoint
         modelName = customModelName
         modelPersonality = customPersonality
+
+        if customProvider == .openAICompatible {
+            customAPIKey = KeychainHelper.load(forKey: openAIAPIKeyKey) ?? ""
+            apiKey = customAPIKey
+        } else {
+            customAPIKey = ""
+            apiKey = ""
+        }
+
+        hasSeenInitialSetup = true
+        hasCompletedSetup = isModelConfigured && validatePermissionGate(for: "model_call")
         showingModelSettings = false
         showingProfileBuilder = false
+        refreshAppReadinessState()
     }
 
     private func beginEditingProfile(_ profile: SavedModelProfile) {
@@ -460,12 +500,21 @@ struct ContentView: View {
     }
 
     private var needsInitialSetup: Bool {
-        let isDefaultOpenAISetup = modelProvider == ModelProvider.openAICompatible.rawValue
-            && apiBaseURL == AIModelConfig.defaultEndpoint
-            && modelName == AIModelConfig.defaultModel
-            && apiKey.isEmpty
+        if !savedProfiles.isEmpty {
+            return false
+        }
 
-        return savedProfiles.isEmpty && isDefaultOpenAISetup
+        let trimmedEndpoint = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let endpointIsMissing = trimmedEndpoint.isEmpty || URL(string: trimmedEndpoint) == nil
+        let modelIsMissing = trimmedModel.isEmpty
+
+        if currentProvider == .openAICompatible {
+            let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmedKey.isEmpty || endpointIsMissing || modelIsMissing
+        }
+
+        return endpointIsMissing || modelIsMissing
     }
 
     var body: some View {
@@ -544,10 +593,12 @@ struct ContentView: View {
                             permissionsBlocked = true
                             isPermissionGateVisible = true
                             hasEnteredWorkshop = false
+                            refreshAppReadinessState()
                         } else {
                             permissionsBlocked = false
                             isPermissionGateVisible = false
                             hasEnteredWorkshop = true
+                            refreshAppReadinessState()
                         }
                     }
                 } label: {
@@ -656,18 +707,24 @@ struct ContentView: View {
                         if !validatePermissionGate(for: "model_call") {
                             permissionsBlocked = false
                             isPermissionGateVisible = true
+                            hasEnteredWorkshop = false
+                            refreshAppReadinessState()
                             return
                         }
 
                         if !isModelConfigured {
                             showingModelSettings = true
                             hasCompletedSetup = false
+                            hasEnteredWorkshop = false
+                            isPermissionGateVisible = false
+                            refreshAppReadinessState()
                             return
                         }
 
                         hasEnteredWorkshop = true
                         hasCompletedSetup = true
                         isPermissionGateVisible = false
+                        refreshAppReadinessState()
                         voice.speak("Na Tüske! Megszólaltam.")
                     } label: {
                     Text("Belépek a Műhelybe")
@@ -725,14 +782,15 @@ struct ContentView: View {
         .onAppear {
             loadSavedAPIKey()
             loadSavedProfiles()
+            syncVoiceAvailability()
 
             if !hasSeenInitialSetup && needsInitialSetup {
                 showingModelSettings = true
                 hasSeenInitialSetup = true
             }
 
-            if hasSeenInitialSetup && isModelConfigured && validatePermissionGate(for: "model_call") {
-                hasCompletedSetup = true
+            if hasSeenInitialSetup {
+                hasCompletedSetup = isModelConfigured && validatePermissionGate(for: "model_call")
             }
 
             refreshAppReadinessState()
@@ -787,20 +845,22 @@ struct ContentView: View {
                 Spacer()
 
                 Button {
+                    guard voice.isAvailable else { return }
                     voiceEnabled.toggle()
                     if !voiceEnabled {
                         voice.stop()
                     }
                 } label: {
-                    Label(voiceEnabled ? "Hang" : "Hang off", systemImage: voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    Label(voice.isAvailable ? (voiceEnabled ? "Hang" : "Hang off") : "Hang nem elérhető", systemImage: voice.isAvailable ? (voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill") : "speaker.slash.fill")
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(
-                            Capsule().fill(voiceEnabled ? Color.green.opacity(0.12) : Color.gray.opacity(0.12))
+                            Capsule().fill(voice.isAvailable ? (voiceEnabled ? Color.green.opacity(0.12) : Color.gray.opacity(0.12)) : Color.gray.opacity(0.12))
                         )
                         .foregroundColor(.white)
                 }
                 .buttonStyle(.plain)
+                .disabled(!voice.isAvailable)
 
                 Button {
                     showingModelSettings = true
@@ -983,6 +1043,22 @@ struct ContentView: View {
                         customAPIKey = apiKey
                     }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Reset") {
+                        modelProvider = AIModelConfig.defaultProvider.rawValue
+                        apiBaseURL = AIModelConfig.defaultEndpoint
+                        modelName = AIModelConfig.defaultModel
+                        modelPersonality = ""
+                        customProvider = AIModelConfig.defaultProvider
+                        customEndpoint = AIModelConfig.defaultEndpoint
+                        customModelName = AIModelConfig.defaultModel
+                        customPersonality = ""
+                        customAPIKey = ""
+                        saveAPIKey("")
+                        hasSeenInitialSetup = false
+                        hasCompletedSetup = false
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("OK") {
                         modelProvider = customProvider.rawValue
@@ -991,7 +1067,10 @@ struct ContentView: View {
                         modelPersonality = customPersonality.trimmingCharacters(in: .whitespacesAndNewlines)
                         let trimmedKey = customAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
                         saveAPIKey(trimmedKey)
+                        hasSeenInitialSetup = true
+                        hasCompletedSetup = isModelConfigured
                         showingModelSettings = false
+                        refreshAppReadinessState()
                     }
                 }
             }
@@ -1069,6 +1148,10 @@ struct ContentView: View {
 
                         if customProvider == .openAICompatible {
                             saveAPIKey(customAPIKey.trimmingCharacters(in: .whitespacesAndNewlines))
+                            apiKey = customAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                        } else {
+                            saveAPIKey("")
+                            apiKey = ""
                         }
 
                         editingProfile = nil
@@ -1301,7 +1384,13 @@ struct ContentView: View {
 
         if !isModelConfigured {
             setAssistantState(.error)
-            messages.append(ChatMessage(agent: selectedAgent, text: "Előbb konfiguráld a modell beállításait.", isUser: false))
+            let missingConfigText: String
+            if currentProvider == .openAICompatible && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                missingConfigText = "Előbb add meg az OpenAI API kulcsot, majd konfiguráld a modellt."
+            } else {
+                missingConfigText = "Előbb konfiguráld a modell beállításait."
+            }
+            messages.append(ChatMessage(agent: selectedAgent, text: missingConfigText, isUser: false))
             showingModelSettings = true
             restoreAssistantIdle()
             return
