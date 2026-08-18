@@ -533,6 +533,7 @@ struct ContentView: View {
             awakeningView
         }
     }
+#if canImport(UIKit)
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
         lastAppLifecycleState = "didBecomeActive"
         refreshAppReadinessState()
@@ -541,6 +542,7 @@ struct ContentView: View {
         lastAppLifecycleState = "willResignActive"
         assistantState = .idle
     }
+#endif
 
     private var permissionGateView: some View {
         ZStack {

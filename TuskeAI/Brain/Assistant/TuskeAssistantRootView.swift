@@ -289,50 +289,6 @@ struct TuskeAssistantRootView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func statusTag(title: String, icon: String, color: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption2)
-                .foregroundColor(color)
-            Text(title)
-                .font(.caption2)
-                .foregroundColor(.white.opacity(0.9))
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(color.opacity(0.12))
-        .clipShape(Capsule())
-    }
-    #endif
-
-    private var headerBar: some View {
-        HStack(spacing: 12) {
-            statusTag(title: "Local", icon: "wifi", color: .green)
-            statusTag(title: "AI", icon: "cpu", color: .cyan)
-            statusTag(title: "Mic", icon: "mic.fill", color: .blue)
-            Spacer()
-            statusTag(title: assistantState.title, icon: "circle.fill", color: colorForState(assistantState))
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func statusTag(title: String, icon: String, color: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption2)
-                .foregroundColor(color)
-            Text(title)
-                .font(.caption2)
-                .foregroundColor(.white.opacity(0.9))
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(color.opacity(0.12))
-        .clipShape(Capsule())
-    }
     #endif
 
     private var headerBar: some View {
@@ -393,6 +349,21 @@ struct TuskeAssistantRootView: View {
         }
         .padding(.horizontal, 18)
         .padding(.top, 14)
+    }
+
+    private func statusTag(title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundColor(color)
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.9))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.12))
+        .clipShape(Capsule())
     }
 
     private var statusPill: some View {
