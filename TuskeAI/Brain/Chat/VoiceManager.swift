@@ -6,14 +6,30 @@ import Speech
 final class VoiceManager {
     private let synthesizer = AVSpeechSynthesizer()
 
-    func speak(_ text: String) {
+    var isAvailable: Bool {
+        AVSpeechSynthesisVoice.speechVoices().contains { $0.language.hasPrefix("hu") }
+    }
 
-        let utterance = AVSpeechUtterance(string: text)
+    func speak(_ text: String, enabled: Bool = true) {
+        guard enabled else { return }
 
-        utterance.voice = AVSpeechSynthesisVoice(language: "hu-HU")
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+
+        let utterance = AVSpeechUtterance(string: cleaned)
+        utterance.voice = AVSpeechSynthesisVoice(language: "hu-HU") ?? AVSpeechSynthesisVoice(language: "en-US")
         utterance.rate = 0.48
         utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
 
         synthesizer.speak(utterance)
+    }
+
+    func stop() {
+        synthesizer.stopSpeaking(at: .immediate)
     }
 }

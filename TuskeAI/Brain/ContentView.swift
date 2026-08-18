@@ -173,13 +173,15 @@ struct ContentView: View {
     @AppStorage("tuskeai.modelName") private var modelName = AIModelConfig.defaultModel
     @AppStorage("tuskeai.modelPersonality") private var modelPersonality = ""
     @AppStorage("tuskeai.syncToiCloud") private var syncToiCloud = false
+    @AppStorage("tuskeai.hasSeenInitialSetup") private var hasSeenInitialSetup = false
+    @AppStorage("tuskeai.hasCompletedSetup") private var hasCompletedSetup = false
 
     @State private var apiKey = ""
     @State private var input: String = ""
     @State private var selectedAgent: Agent = .csajos
     @State private var isLoading: Bool = false
     @State private var hasEnteredWorkshop = false
-    @State private var isPermissionGateVisible = false
+    @State private var isPermissionGateVisible = true
     @State private var permissionsBlocked = false
     @State private var callLog: [String] = []
     @State private var calendarItems: [String] = []
@@ -194,6 +196,9 @@ struct ContentView: View {
     @State private var profileName = ""
     @State private var savedProfiles: [SavedModelProfile] = []
     @State private var editingProfile: SavedModelProfile? = nil
+    @State private var lastMessageID: UUID? = nil
+    @State private var voiceEnabled = true
+    @State private var lastAppLifecycleState: String = "unknown"
 
     @State private var messages: [ChatMessage] = [
         ChatMessage(
@@ -218,6 +223,46 @@ struct ContentView: View {
         URL(string: apiBaseURL) ?? URL(string: AIModelConfig.defaultEndpoint)!
     }
 
+    private var isModelConfigured: Bool {
+        let trimmedEndpoint = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmedEndpoint.isEmpty && !trimmedModel.isEmpty && URL(string: trimmedEndpoint) != nil
+    }
+
+    private var canUseAssistant: Bool {
+        validatePermissionGate(for: "model_call") && isModelConfigured
+    }
+
+    private var setupReadinessBadge: String {
+        if !validatePermissionGate(for: "model_call") {
+            return "Engedélyek várnak"
+        }
+        if !isModelConfigured {
+            return "Modell beállítás hiányzik"
+        }
+        return "Kész a használatra"
+    }
+
+    private func refreshAppReadinessState() {
+        if !validatePermissionGate(for: "model_call") {
+            isPermissionGateVisible = true
+            hasEnteredWorkshop = false
+            assistantState = .unauthorized
+            return
+        }
+
+        if !isModelConfigured {
+            isPermissionGateVisible = false
+            hasEnteredWorkshop = false
+            assistantState = .idle
+            return
+        }
+
+        isPermissionGateVisible = false
+        hasEnteredWorkshop = true
+        assistantState = .idle
+    }
+
     init(assistantState: Binding<TuskeAssistantState> = .constant(.idle)) {
         self._assistantState = assistantState
     }
@@ -228,10 +273,26 @@ struct ContentView: View {
 
     private func restoreAssistantIdle() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if assistantState == .thinking || assistantState == .speaking || assistantState == .listening {
+            if assistantState == .thinking || assistantState == .speaking || assistantState == .listening || assistantState == .offline || assistantState == .unauthorized || assistantState == .error || assistantState == .sick {
                 assistantState = .idle
             }
         }
+    }
+
+    private func handleModelFailure(_ error: ModelServiceError, for agent: Agent) {
+        let mappedState: TuskeAssistantState
+        switch error {
+        case .offline:
+            mappedState = .offline
+        case .unauthorized:
+            mappedState = .unauthorized
+        default:
+            mappedState = .error
+        }
+
+        setAssistantState(mappedState)
+        messages.append(ChatMessage(agent: agent, text: "Hiba: \(error.localizedDescription)", isUser: false))
+        restoreAssistantIdle()
     }
 
     private func loadSavedAPIKey() {
@@ -398,14 +459,38 @@ struct ContentView: View {
         }
     }
 
+    private var needsInitialSetup: Bool {
+        let isDefaultOpenAISetup = modelProvider == ModelProvider.openAICompatible.rawValue
+            && apiBaseURL == AIModelConfig.defaultEndpoint
+            && modelName == AIModelConfig.defaultModel
+            && apiKey.isEmpty
+
+        return savedProfiles.isEmpty && isDefaultOpenAISetup
+    }
+
     var body: some View {
-        if isPermissionGateVisible {
-            permissionGateView
-        } else if hasEnteredWorkshop {
+        if hasEnteredWorkshop {
             mainView
+        } else if isPermissionGateVisible || !validatePermissionGate(for: "model_call") {
+            permissionGateView
+                .onAppear {
+                    if canUseAssistant {
+                        permissionsBlocked = false
+                        isPermissionGateVisible = false
+                        hasEnteredWorkshop = true
+                    }
+                }
         } else {
             awakeningView
         }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+        lastAppLifecycleState = "didBecomeActive"
+        refreshAppReadinessState()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+        lastAppLifecycleState = "willResignActive"
+        assistantState = .idle
     }
 
     private var permissionGateView: some View {
@@ -449,12 +534,16 @@ struct ContentView: View {
 
                 Button {
                     permissionEngine.requestRequiredPermissions { results in
-                        let explicitDenied = results.keys.contains { key in
-                            !results[key, default: false] && permissionEngine.explicitUserDecision(for: key)
+                        let requiredPermissions: [PermissionType] = [.microphone, .speechRecognition, .localNetwork]
+                        let allRequiredGranted = requiredPermissions.allSatisfy { results[$0, default: false] }
+                        let explicitDenied = requiredPermissions.contains { permission in
+                            !results[permission, default: false] && permissionEngine.explicitUserDecision(for: permission)
                         }
 
-                        if explicitDenied {
+                        if explicitDenied || !allRequiredGranted {
                             permissionsBlocked = true
+                            isPermissionGateVisible = true
+                            hasEnteredWorkshop = false
                         } else {
                             permissionsBlocked = false
                             isPermissionGateVisible = false
@@ -564,7 +653,21 @@ struct ContentView: View {
                 .buttonStyle(.plain)
 
                 Button {
+                        if !validatePermissionGate(for: "model_call") {
+                            permissionsBlocked = false
+                            isPermissionGateVisible = true
+                            return
+                        }
+
+                        if !isModelConfigured {
+                            showingModelSettings = true
+                            hasCompletedSetup = false
+                            return
+                        }
+
                         hasEnteredWorkshop = true
+                        hasCompletedSetup = true
+                        isPermissionGateVisible = false
                         voice.speak("Na Tüske! Megszólaltam.")
                     } label: {
                     Text("Belépek a Műhelybe")
@@ -619,6 +722,21 @@ struct ContentView: View {
         }
         .padding()
 #endif
+        .onAppear {
+            loadSavedAPIKey()
+            loadSavedProfiles()
+
+            if !hasSeenInitialSetup && needsInitialSetup {
+                showingModelSettings = true
+                hasSeenInitialSetup = true
+            }
+
+            if hasSeenInitialSetup && isModelConfigured && validatePermissionGate(for: "model_call") {
+                hasCompletedSetup = true
+            }
+
+            refreshAppReadinessState()
+        }
         .sheet(isPresented: $showingModelSettings) {
             modelSettingsSheet
                 .onAppear {
@@ -669,6 +787,22 @@ struct ContentView: View {
                 Spacer()
 
                 Button {
+                    voiceEnabled.toggle()
+                    if !voiceEnabled {
+                        voice.stop()
+                    }
+                } label: {
+                    Label(voiceEnabled ? "Hang" : "Hang off", systemImage: voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(voiceEnabled ? Color.green.opacity(0.12) : Color.gray.opacity(0.12))
+                        )
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+
+                Button {
                     showingModelSettings = true
                 } label: {
                     Label("Modell", systemImage: "cpu")
@@ -693,6 +827,16 @@ struct ContentView: View {
             Text("Aktív backend: \(currentProvider.displayName) • \(modelName)")
                 .font(.caption)
                 .foregroundColor(.secondary)
+
+            if !isModelConfigured {
+                Text("Modell beállítás szükséges")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+            } else {
+                Text(setupReadinessBadge)
+                    .font(.caption2)
+                    .foregroundColor(.green)
+            }
 
             #if os(macOS)
             Text("Működési mód: desktop • asztali asszisztens")
@@ -977,27 +1121,48 @@ struct ContentView: View {
     }
 
     private var chatView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(messages) { message in
-                    messageBubble(message)
-                }
-
-                if isLoading {
-                    HStack {
-                        ProgressView()
-                        Text("\(selectedAgent.rawValue) gondolkodik...")
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if messages.isEmpty {
+                        Text("Még nincs üzenet. Írj valamit a műhelynek.")
                             .foregroundColor(.secondary)
+                            .padding(.vertical, 24)
+                    } else {
+                        ForEach(messages) { message in
+                            messageBubble(message)
+                                .id(message.id)
+                        }
+                    }
+
+                    if isLoading {
+                        HStack {
+                            ProgressView()
+                            Text("\(selectedAgent.rawValue) gondolkodik...")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.gray.opacity(0.10))
+            )
+            .onAppear {
+                if let lastMessage = messages.last {
+                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                }
+            }
+            .onChange(of: messages.count) { _, _ in
+                if let lastMessage = messages.last {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
         }
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.gray.opacity(0.10))
-        )
     }
 
     private func messageBubble(_ message: ChatMessage) -> some View {
@@ -1042,7 +1207,7 @@ struct ContentView: View {
                 .onSubmit {
                     sendPrompt()
                 }
-                .disabled(isLoading)
+                .disabled(isLoading || !isModelConfigured)
 
             Button {
                 sendPrompt()
@@ -1050,7 +1215,7 @@ struct ContentView: View {
                 Text(isLoading ? "Küldés..." : "Küldés")
                     .bold()
             }
-            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading || !isModelConfigured)
         }
     }
 
@@ -1134,6 +1299,22 @@ struct ContentView: View {
         let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInput.isEmpty else { return }
 
+        if !isModelConfigured {
+            setAssistantState(.error)
+            messages.append(ChatMessage(agent: selectedAgent, text: "Előbb konfiguráld a modell beállításait.", isUser: false))
+            showingModelSettings = true
+            restoreAssistantIdle()
+            return
+        }
+
+        if !canUseAssistant {
+            setAssistantState(.unauthorized)
+            messages.append(ChatMessage(agent: selectedAgent, text: "A modell használatához engedélyezni kell a szükséges hozzáféréseket.", isUser: false))
+            isPermissionGateVisible = true
+            restoreAssistantIdle()
+            return
+        }
+
         if handleBuiltInActions(trimmedInput) {
             input = ""
             return
@@ -1162,154 +1343,60 @@ struct ContentView: View {
         setAssistantState(.thinking)
         let systemInstruction = effectiveSystemInstruction(for: agent)
 
-        let body: [String: Any] = [
-            "model": modelName,
-            "messages": [
-                ["role": "system", "content": systemInstruction],
-                ["role": "user", "content": prompt]
-            ],
-            "temperature": 0.45,
-            "max_tokens": 400
-        ]
+        ModelService.shared.send(
+            prompt: prompt,
+            provider: .openAICompatible,
+            endpoint: apiBaseURL,
+            modelName: modelName,
+            apiKey: apiKey,
+            systemInstruction: systemInstruction
+        ) { [weak self] result in
+            guard let self else { return }
 
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
-            setAssistantState(.error)
-            messages.append(ChatMessage(agent: agent, text: "Hiba: nem sikerült JSON-t készíteni a modellhíváshoz.", isUser: false))
-            isLoading = false
-            restoreAssistantIdle()
-            return
-        }
-
-        var request = URLRequest(url: currentEndpointURL)
-        request.httpMethod = "POST"
-        request.httpBody = jsonData
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 120
-
-        if !apiKey.isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        }
-
-        URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
-                isLoading = false
+                self.isLoading = false
 
-                if let error = error {
-                    setAssistantState(.error)
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: \(error.localizedDescription)", isUser: false))
-                    restoreAssistantIdle()
-                    return
+                switch result {
+                case .success(let response):
+                    self.setAssistantState(.speaking)
+                    self.messages.append(ChatMessage(agent: agent, text: response, isUser: false))
+                    self.voice.speak(response, enabled: self.voiceEnabled)
+                    self.restoreAssistantIdle()
+                case .failure(let error):
+                    self.handleModelFailure(error, for: agent)
                 }
-
-                guard let data = data else {
-                    setAssistantState(.sick)
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: nem jött válasz az OpenAI kompatibilis modellből.", isUser: false))
-                    restoreAssistantIdle()
-                    return
-                }
-
-                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    if let raw = String(data: data, encoding: .utf8) {
-                        setAssistantState(.speaking)
-                        messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
-                    } else {
-                        setAssistantState(.error)
-                        messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható válasz.", isUser: false))
-                    }
-                    restoreAssistantIdle()
-                    return
-                }
-
-                if let choices = json["choices"] as? [[String: Any]],
-                   let firstChoice = choices.first,
-                   let message = firstChoice["message"] as? [String: Any],
-                   let content = message["content"] as? String {
-                    setAssistantState(.speaking)
-                    messages.append(ChatMessage(agent: agent, text: content, isUser: false))
-                } else if let raw = String(data: data, encoding: .utf8) {
-                    setAssistantState(.speaking)
-                    messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
-                } else {
-                    setAssistantState(.error)
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható OpenAI válasz.", isUser: false))
-                }
-                restoreAssistantIdle()
             }
-        }.resume()
+        }
     }
 
     private func sendToOllama(prompt: String, agent: Agent) {
         isLoading = true
         setAssistantState(.thinking)
         let systemInstruction = effectiveSystemInstruction(for: agent)
-        let ollamaPrompt = """
-        [SYSTEM INSTRUCTION]
-        \(systemInstruction)
 
-        [USER]
-        \(prompt)
-        """
+        ModelService.shared.send(
+            prompt: prompt,
+            provider: .ollama,
+            endpoint: apiBaseURL,
+            modelName: modelName,
+            apiKey: "",
+            systemInstruction: systemInstruction
+        ) { [weak self] result in
+            guard let self else { return }
 
-        let body: [String: Any] = [
-            "model": modelName,
-            "prompt": ollamaPrompt,
-            "stream": false,
-            "keep_alive": "30m",
-            "options": [
-                "num_predict": 120,
-                "temperature": 0.45,
-                "num_ctx": 1024,
-                "top_k": 20,
-                "top_p": 0.8,
-                "num_thread": 4
-            ]
-        ]
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
-            setAssistantState(.error)
-            messages.append(ChatMessage(agent: agent, text: "Hiba: nem sikerült JSON-t készíteni.", isUser: false))
-            isLoading = false
-            restoreAssistantIdle()
-            return
-        }
-
-        var request = URLRequest(url: currentEndpointURL)
-        request.httpMethod = "POST"
-        request.httpBody = jsonData
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 120
-
-        URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
-                isLoading = false
+                self.isLoading = false
 
-                if let error = error {
-                    setAssistantState(.error)
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: \(error.localizedDescription)", isUser: false))
-                    restoreAssistantIdle()
-                    return
+                switch result {
+                case .success(let response):
+                    self.setAssistantState(.speaking)
+                    self.messages.append(ChatMessage(agent: agent, text: response, isUser: false))
+                    self.voice.speak(response, enabled: self.voiceEnabled)
+                    self.restoreAssistantIdle()
+                case .failure(let error):
+                    self.handleModelFailure(error, for: agent)
                 }
-
-                guard let data = data else {
-                    setAssistantState(.sick)
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: nem jött válasz az Ollamától.", isUser: false))
-                    restoreAssistantIdle()
-                    return
-                }
-
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let answer = json["response"] as? String {
-                    setAssistantState(.speaking)
-                    messages.append(ChatMessage(agent: agent, text: answer, isUser: false))
-                } else if let raw = String(data: data, encoding: .utf8) {
-                    setAssistantState(.speaking)
-                    messages.append(ChatMessage(agent: agent, text: raw, isUser: false))
-                } else {
-                    setAssistantState(.error)
-                    messages.append(ChatMessage(agent: agent, text: "Hiba: nem olvasható válasz.", isUser: false))
-                }
-                restoreAssistantIdle()
             }
-        }.resume()
+        }
     }
 }

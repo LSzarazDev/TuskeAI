@@ -8,6 +8,8 @@ enum TuskeAssistantState: String, CaseIterable {
     case angry
     case sick
     case error
+    case offline
+    case unauthorized
 
     var title: String {
         switch self {
@@ -18,6 +20,8 @@ enum TuskeAssistantState: String, CaseIterable {
         case .angry: return "Dühös"
         case .sick: return "Instabil"
         case .error: return "Hiba"
+        case .offline: return "Offline"
+        case .unauthorized: return "Nincs jogosultság"
         }
     }
 }
